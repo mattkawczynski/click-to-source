@@ -16,7 +16,7 @@ npm run pack:local
 Use the generated tarball to test the exact package contents in another app:
 
 ```bash
-npm install -D ../path/to/click-to-source-1.0.1.tgz
+npm install -D ../path/to/click-to-source-<version>.tgz
 ```
 
 ## Release Flow
