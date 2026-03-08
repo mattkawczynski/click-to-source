@@ -1,0 +1,9 @@
+{
+  "builders": {
+    "dev-server": {
+      "implementation": "./dist/angular/dev-server.cjs",
+      "schema": "./builders/dev-server.schema.json",
+      "description": "Angular dev-server builder with click-to-source support"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/schema",
+  "title": "click-to-source dev-server",
+  "type": "object",
+  "properties": {
+    "clickToSource": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "path": {
+          "type": "string",
+          "default": "/__click_to_source/open"
+        },
+        "editor": {
+          "type": "string"
+        },
+        "allowRemote": {
+          "type": "boolean",
+          "default": false
+        },
+        "allowOutsideWorkspace": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

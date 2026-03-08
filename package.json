@@ -1,0 +1,159 @@
+{
+  "name": "click-to-source",
+  "version": "1.0.1",
+  "description": "Ctrl+Click any UI element in development to open its source in your editor",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "click-to-source": "./dist/cli.cjs"
+  },
+  "builders": "builders.json",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./init": {
+      "types": "./dist/init.d.ts",
+      "import": "./dist/init.mjs",
+      "require": "./dist/init.cjs"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.mjs",
+      "require": "./dist/vite.cjs"
+    },
+    "./babel": {
+      "types": "./dist/babel.d.ts",
+      "import": "./dist/babel.mjs",
+      "require": "./dist/babel.cjs"
+    },
+    "./vue": {
+      "types": "./dist/vue.d.ts",
+      "import": "./dist/vue.mjs",
+      "require": "./dist/vue.cjs"
+    },
+    "./svelte": {
+      "types": "./dist/svelte.d.ts",
+      "import": "./dist/svelte.mjs",
+      "require": "./dist/svelte.cjs"
+    },
+    "./webpack": {
+      "types": "./dist/webpack.d.ts",
+      "import": "./dist/webpack.mjs",
+      "require": "./dist/webpack.cjs"
+    },
+    "./rspack": {
+      "types": "./dist/rspack.d.ts",
+      "import": "./dist/rspack.mjs",
+      "require": "./dist/rspack.cjs"
+    },
+    "./server": {
+      "types": "./dist/server/open-handler.d.ts",
+      "import": "./dist/server/open-handler.mjs",
+      "require": "./dist/server/open-handler.cjs"
+    },
+    "./angular/dev-server": {
+      "require": "./dist/angular/dev-server.cjs"
+    },
+    "./angular/template-loader": {
+      "require": "./dist/angular/template-loader.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "builders.json",
+    "builders"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepack": "npm run build",
+    "pack:local": "npm pack",
+    "test": "node --test --experimental-test-isolation=none --experimental-strip-types \"tests/**/*.test.ts\"",
+    "type-check": "tsc --noEmit",
+    "verify": "npm run build && npm run type-check && npm run test && npm pack --dry-run",
+    "prepublishOnly": "npm run verify"
+  },
+  "keywords": [
+    "vscode",
+    "development",
+    "click-to-source",
+    "debugging",
+    "react",
+    "vue",
+    "svelte",
+    "angular",
+    "vite",
+    "webpack",
+    "dev-tools"
+  ],
+  "author": "mattkawczynski",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mattkawczynski/click-to-source"
+  },
+  "bugs": {
+    "url": "https://github.com/mattkawczynski/click-to-source/issues"
+  },
+  "homepage": "https://github.com/mattkawczynski/click-to-source#readme",
+  "dependencies": {
+    "magic-string": "^0.30.7",
+    "parse5": "^7.1.2"
+  },
+  "peerDependencies": {
+    "@babel/core": "^7.0.0",
+    "@vitejs/plugin-react": "^4.0.0 || ^5.0.0",
+    "@vitejs/plugin-vue": "^5.0.0 || ^6.0.0",
+    "@sveltejs/vite-plugin-svelte": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0",
+    "@vue/compiler-core": "^3.0.0",
+    "svelte": "^4.0.0 || ^5.0.0",
+    "webpack": "^5.0.0",
+    "@angular-devkit/architect": ">=0.1700.0 <1.0.0",
+    "@angular-devkit/build-angular": ">=17.0.0 <22.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@vitejs/plugin-react": {
+      "optional": true
+    },
+    "@vitejs/plugin-vue": {
+      "optional": true
+    },
+    "@sveltejs/vite-plugin-svelte": {
+      "optional": true
+    },
+    "@vue/compiler-core": {
+      "optional": true
+    },
+    "svelte": {
+      "optional": true
+    },
+    "webpack": {
+      "optional": true
+    },
+    "@angular-devkit/architect": {
+      "optional": true
+    },
+    "@angular-devkit/build-angular": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@vue/compiler-core": "^3.0.0",
+    "@types/babel__core": "^7.20.5",
+    "@types/babel__traverse": "^7.20.5",
+    "@types/node": "^20.10.0",
+    "@types/webpack": "^5.28.5",
+    "svelte": "^5.53.7",
+    "tsup": "^8.0.1",
+    "typescript": "^5.9.0",
+    "vite": "^6.4.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

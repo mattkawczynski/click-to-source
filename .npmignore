@@ -1,0 +1,14 @@
+src/
+examples/
+*.md
+.git
+.gitignore
+tsconfig.json
+tsup.config.ts
+.eslintrc
+.prettierrc
+node_modules/
+.vscode/
+*.log
+dist.test.*
+coverage/

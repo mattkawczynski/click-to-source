@@ -1,0 +1,41 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Upgrade npm for trusted publishing
+        run: npm install --global npm@^11.5.1
+
+      - name: Verify
+        run: npm run verify
+
+      - name: Check Version Is Unpublished
+        run: node -e 'const { execSync } = require("node:child_process"); const pkg = require("./package.json"); try { execSync("npm view " + pkg.name + "@" + pkg.version + " version", { stdio: "pipe" }); console.error("Version " + pkg.name + "@" + pkg.version + " already exists on npm."); process.exit(1); } catch (error) { if (error.status === 1) process.exit(0); throw error; }'
+
+      - name: Publish
+        run: npm publish --provenance
