@@ -1,6 +1,6 @@
 {
   "name": "click-to-source",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Ctrl+Click any UI element in development to open its source in your editor",
   "type": "module",
   "main": "./dist/index.cjs",
