@@ -1,6 +1,6 @@
 {
   "name": "click-to-source",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Ctrl+Click any UI element in development to open its source in your editor",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -102,6 +102,9 @@
     "url": "https://github.com/mattkawczynski/click-to-source/issues"
   },
   "homepage": "https://github.com/mattkawczynski/click-to-source#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "magic-string": "^0.30.7",
     "parse5": "^7.1.2"
