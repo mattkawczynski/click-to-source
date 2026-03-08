@@ -7,7 +7,6 @@ const { execFileSync, spawn } = require("node:child_process");
 const repoRoot = path.resolve(__dirname, "..");
 const isWindows = process.platform === "win32";
 const npmCommand = "npm";
-const npxCommand = "npx";
 
 function quoteWindowsArg(value) {
   if (!/[\s"]/.test(value)) {
@@ -246,7 +245,11 @@ async function main() {
     );
 
     run(npmCommand, ["install", "--no-fund", "--no-audit"], appRoot);
-    run(npxCommand, ["click-to-source", "setup"], appRoot);
+    run(
+      "node",
+      [path.join("node_modules", "click-to-source", "dist", "cli.cjs"), "setup"],
+      appRoot,
+    );
 
     const mainFile = fs.readFileSync(path.join(srcRoot, "main.jsx"), "utf8");
     const viteConfig = fs.readFileSync(

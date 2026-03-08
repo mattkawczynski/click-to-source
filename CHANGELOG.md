@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.6] - 2026-03-08
+
+### Fixed
+
+- made the packed-install smoke test invoke the installed CLI directly, avoiding cross-platform `npx` resolution issues in CI.
+
 ## [1.0.4] - 2026-03-08
 
 ### Added
