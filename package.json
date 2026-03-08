@@ -73,6 +73,7 @@
     "dev": "tsup --watch",
     "prepack": "npm run build",
     "pack:local": "npm pack",
+    "release:check-unpublished": "node scripts/check-unpublished.cjs",
     "test": "node --test --experimental-test-isolation=none --experimental-strip-types \"tests/**/*.test.ts\"",
     "type-check": "tsc --noEmit",
     "verify": "npm run build && npm run type-check && npm run test && npm pack --dry-run",
