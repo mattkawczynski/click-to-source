@@ -34,6 +34,9 @@ jobs:
       - name: Verify
         run: npm run verify
 
+      - name: Smoke Test
+        run: npm run test:smoke
+
       - name: Check Version Is Unpublished
         run: npm run release:check-unpublished
 

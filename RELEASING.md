@@ -13,6 +13,7 @@ The remaining setup is for future releases.
 
 ```bash
 npm run verify
+npm run test:smoke
 npm run pack:local
 ```
 
@@ -66,4 +67,5 @@ git push origin main --follow-tags
 
 1. `npm run verify` uses `npm pack --dry-run`. It validates package contents but does not create a reusable tarball.
 2. `npm run pack:local` creates a real tarball and always rebuilds first via `prepack`.
-3. The first public release was published manually. Trusted publishing is for the next releases.
+3. `npm run test:smoke` installs the packed tarball into a temporary Vite React app and verifies both build mode and dev mode behavior.
+4. The first public release was published manually. Trusted publishing is for the next releases.

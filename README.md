@@ -1,5 +1,9 @@
 # click-to-source
 
+[![npm version](https://img.shields.io/npm/v/click-to-source)](https://www.npmjs.com/package/click-to-source)
+[![CI](https://img.shields.io/github/actions/workflow/status/mattkawczynski/click-to-source/ci.yml?branch=main&label=ci)](https://github.com/mattkawczynski/click-to-source/actions/workflows/ci.yml)
+[![License](https://img.shields.io/npm/l/click-to-source)](LICENSE)
+
 Ctrl+Click any UI element in development to open its source in your editor.
 
 Works by injecting a `data-click-to-source` attribute at build time, then using a runtime click handler to open the file at the right line and column.
@@ -268,12 +272,14 @@ If clicking does nothing:
 
 ```bash
 npm run verify
+npm run test:smoke
 ```
 
 `npm run test` currently uses Node 22's `--experimental-strip-types` support.
 
 The package is live on npm as `click-to-source`.
 Release details and the GitHub Actions publish flow live in `RELEASING.md`.
+Change history lives in `CHANGELOG.md`.
 
 ## License
 

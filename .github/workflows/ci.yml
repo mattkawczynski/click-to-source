@@ -30,3 +30,7 @@ jobs:
 
       - name: Verify
         run: npm run verify
+
+      - name: Smoke Test
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run test:smoke

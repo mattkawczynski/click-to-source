@@ -75,6 +75,7 @@
     "pack:local": "npm pack",
     "release:check-unpublished": "node scripts/check-unpublished.cjs",
     "test": "node --test --experimental-test-isolation=none --experimental-strip-types \"tests/**/*.test.ts\"",
+    "test:smoke": "node scripts/smoke-test.cjs",
     "type-check": "tsc --noEmit",
     "verify": "npm run build && npm run type-check && npm run test && npm pack --dry-run",
     "prepublishOnly": "npm run verify"
