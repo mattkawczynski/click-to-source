@@ -23,11 +23,6 @@ function shouldEnableDevTransforms(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-function stripQuery(id: string): string {
-  const queryIndex = id.indexOf("?");
-  return queryIndex === -1 ? id : id.slice(0, queryIndex);
-}
-
 function resolveLocalModule(basePath: string): string {
   const candidates = [basePath, `${basePath}.cjs`, `${basePath}.js`, `${basePath}.mjs`];
   for (const candidate of candidates) {
@@ -56,16 +51,6 @@ function loadConsumerModule<T>(id: string): T {
   return require(resolveConsumerModule(id)) as T;
 }
 
-function loadBabelCore(): typeof import("@babel/core") {
-  try {
-    return loadConsumerModule<typeof import("@babel/core")>("@babel/core");
-  } catch (error) {
-    throw new Error(
-      "click-to-source: @babel/core is required for React support."
-    );
-  }
-}
-
 function hasPackage(pkg: string): boolean {
   try {
     resolveConsumerModule(pkg);
@@ -92,62 +77,34 @@ function resolveFramework(framework: ClickToSourceFramework): ClickToSourceFrame
 }
 
 function createReactPlugin(): Plugin[] {
+  type ReactBabelOptions = {
+    plugins?: unknown[];
+  };
+
   return [
     {
-      name: "click-to-source-react-transform",
+      name: "click-to-source-react-babel",
       apply: "serve",
-      enforce: "pre",
-      transform(code, id) {
-        if (!shouldEnableDevTransforms()) return null;
+      api: {
+        reactBabel(babelOptions: ReactBabelOptions) {
+          if (!shouldEnableDevTransforms()) return;
 
-        const cleanId = stripQuery(id);
-        if (
-          cleanId.includes("node_modules") ||
-          cleanId.startsWith("\0") ||
-          !/\.(jsx|tsx|js|mjs|cjs)$/.test(cleanId)
-        ) {
-          return null;
-        }
+          const plugins = Array.isArray(babelOptions.plugins)
+            ? babelOptions.plugins
+            : (babelOptions.plugins = []);
+          const alreadyRegistered = plugins.some((plugin) => {
+            if (Array.isArray(plugin)) {
+              return plugin[0] === clickToSourceBabelPlugin;
+            }
+            return plugin === clickToSourceBabelPlugin;
+          });
 
-        const babel = loadBabelCore();
-        const extension = cleanId.slice(cleanId.lastIndexOf("."));
-        const parserPlugins: any[] = [
-          "jsx",
-          "importAttributes",
-          "topLevelAwait",
-          "classProperties",
-          "classPrivateProperties",
-          "classPrivateMethods",
-          "decorators-legacy",
-        ];
-
-        if (extension === ".tsx") {
-          parserPlugins.push("typescript");
-        }
-
-        const result = babel.transformSync(code, {
-          filename: cleanId,
-          babelrc: false,
-          configFile: false,
-          sourceMaps: true,
-          plugins: [[clickToSourceBabelPlugin, { enabled: true }]],
-          parserOpts: {
-            sourceType: "module",
-            plugins: parserPlugins,
-          },
-          generatorOpts: {
-            decoratorsBeforeExport: true,
-          },
-        });
-
-        if (!result?.code) return null;
-
-        return {
-          code: result.code,
-          map: result.map ?? null,
-        };
+          if (!alreadyRegistered) {
+            plugins.push([clickToSourceBabelPlugin, { enabled: true }]);
+          }
+        },
       },
-    },
+    } as Plugin,
   ];
 }
 

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.7] - 2026-03-08
+
+### Fixed
+
+- corrected Vite React source locations by registering the JSX instrumentation inside `@vitejs/plugin-react`'s Babel hook, so React Refresh preamble lines no longer shift reported file positions.
+- tightened the packed-install smoke test to assert the reported JSX source line in development mode.
+
 ## [1.0.6] - 2026-03-08
 
 ### Fixed

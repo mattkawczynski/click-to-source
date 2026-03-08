@@ -303,6 +303,10 @@ async function main() {
       transformedModule.includes("data-click-to-source"),
       `Dev transform did not inject data-click-to-source.\n${logs.join("")}`,
     );
+    assert(
+      /App\.jsx:4:\d+/.test(transformedModule),
+      `Dev transform reported an unexpected source line.\n${logs.join("")}\n${transformedModule}`,
+    );
 
     const response = await fetch(
       `http://127.0.0.1:${port}/__click_to_source/open?file=src/App.jsx&line=1&column=1&editor=vscode`,
