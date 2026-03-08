@@ -272,7 +272,8 @@ npm run verify
 
 `npm run test` currently uses Node 22's `--experimental-strip-types` support.
 
-Release details live in `RELEASING.md`.
+The package is live on npm as `click-to-source`.
+Release details and the GitHub Actions publish flow live in `RELEASING.md`.
 
 ## License
 

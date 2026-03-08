@@ -1,5 +1,8 @@
 # Releasing
 
+`click-to-source@1.0.3` has already been published manually.
+The remaining setup is for future releases.
+
 ## Preconditions
 
 1. The GitHub repository exists at `git@github.com:mattkawczynski/click-to-source.git`.
@@ -35,22 +38,32 @@ git push origin main --follow-tags
 
 3. GitHub Actions publishes the package from the `v*` tag.
 
-Manual fallback:
-
-1. Open the `Publish` workflow in GitHub Actions.
-2. Run it against `main`.
-
 ## Trusted Publishing Setup
 
-In npm:
+Trusted publishing means npm trusts one specific GitHub Actions workflow to publish the package.
+That workflow gets short-lived credentials from GitHub when it runs, so you do not store a long-lived npm token in GitHub secrets.
+
+Configure it once in npm:
 
 1. Open package settings.
 2. Add a trusted publisher for the GitHub repository.
 3. Select the `publish.yml` workflow.
 
-The workflow uses `id-token: write` and runs `npm publish --provenance`.
+This repo already has the workflow side in place:
+
+1. `.github/workflows/publish.yml` requests `id-token: write`.
+2. The workflow runs on `v*` tags.
+3. The publish step uses `npm publish --provenance --access public`.
+
+Once that npm-side trust is configured, future releases become:
+
+```bash
+npm version patch
+git push origin main --follow-tags
+```
 
 ## Notes
 
 1. `npm run verify` uses `npm pack --dry-run`. It validates package contents but does not create a reusable tarball.
 2. `npm run pack:local` creates a real tarball and always rebuilds first via `prepack`.
+3. The first public release was published manually. Trusted publishing is for the next releases.

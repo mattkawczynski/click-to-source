@@ -7,7 +7,7 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "bin": {
-    "click-to-source": "./dist/cli.cjs"
+    "click-to-source": "dist/cli.cjs"
   },
   "builders": "builders.json",
   "exports": {
@@ -96,7 +96,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mattkawczynski/click-to-source"
+    "url": "git+https://github.com/mattkawczynski/click-to-source.git"
   },
   "bugs": {
     "url": "https://github.com/mattkawczynski/click-to-source/issues"
