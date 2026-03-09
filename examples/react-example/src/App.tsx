@@ -9,7 +9,7 @@ function App() {
       <header className="header">
         <h1>click-to-source Demo</h1>
         <p className="subtitle">
-          Try Ctrl+clicking on any element below to open its source in VSCode
+          Hold the configured hotkey to preview elements, then click to open their source in VSCode
         </p>
       </header>
 
@@ -19,7 +19,8 @@ function App() {
           <p>
             This is a demonstration of the{' '}
             <strong>click-to-source</strong> development tool. With it enabled,
-            you can Ctrl+Click any element to instantly jump to its source code
+            you can hold the configured hotkey and click any element to
+            instantly jump to its source code
             in VSCode.
           </p>
         </section>
@@ -37,7 +38,7 @@ function App() {
 
         <section className="card">
           <h2>Element Inspector</h2>
-          <p>Try Ctrl+clicking on these elements:</p>
+          <p>Hold the configured hotkey and try these elements:</p>
           <ul>
             <li>This list item</li>
             <li>Another list item</li>
@@ -62,8 +63,9 @@ function App() {
           <h2>How It Works</h2>
           <p>
             The Babel plugin automatically adds source information to every JSX
-            element during development. When you Ctrl+Click, the source file
-            opens in VSCode at the exact line and column.
+            element during development. When you hold the configured hotkey and
+            click, the source file opens in VSCode at the exact line and
+            column.
           </p>
           <code>data-click-to-source="/src/App.tsx:42:14"</code>
         </section>

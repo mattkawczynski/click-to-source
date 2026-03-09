@@ -1,9 +1,9 @@
 import type { Configuration, RuleSetRule } from "webpack";
 import { createRequire } from "module";
 import type { IncomingMessage, ServerResponse } from "http";
-import { DEFAULT_SERVER_PATH } from "./constants";
-import { createOpenRequestHandler } from "./server/open-handler";
-import clickToSourceBabelPlugin from "./babel-plugin";
+import { DEFAULT_SERVER_PATH } from "./constants.ts";
+import { createOpenRequestHandler } from "./server/open-handler.ts";
+import clickToSourceBabelPlugin from "./babel-plugin.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -11,6 +11,7 @@ export type ClickToSourceFramework = "react" | "vue" | "svelte" | "auto";
 
 export interface ClickToSourceWebpackOptions {
   framework?: ClickToSourceFramework;
+  enabled?: boolean;
   serverPath?: string;
   editor?: string;
   allowRemote?: boolean;
@@ -111,6 +112,18 @@ function addSveltePreprocess(options: any) {
   options.preprocess = preprocessList;
 }
 
+function shouldEnableTransforms(
+  config: Configuration,
+  explicitEnabled?: boolean
+): boolean {
+  if (typeof explicitEnabled === "boolean") {
+    return explicitEnabled;
+  }
+
+  const mode = config.mode || process.env.NODE_ENV;
+  return mode !== "production";
+}
+
 export function withClickToSource(
   config: Configuration,
   options: ClickToSourceWebpackOptions = {}
@@ -118,66 +131,69 @@ export function withClickToSource(
   const configWithDevServer = config as Configuration & {
     devServer?: DevServerConfig;
   };
+  const enabled = shouldEnableTransforms(configWithDevServer, options.enabled);
   const framework = options.framework || "auto";
   const rules = (configWithDevServer.module?.rules || []) as RuleSetRule[];
 
-  walkRules(rules, (rule) => {
-    const loaderField = (rule as any).loader;
-    const optionsField = (rule as any).options;
-
-    if (
-      loaderField &&
-      (framework === "react" || framework === "auto") &&
-      loaderField.includes("babel-loader")
-    ) {
-      addBabelPlugin(optionsField);
-    }
-
-    if (
-      loaderField &&
-      (framework === "vue" || framework === "auto") &&
-      loaderField.includes("vue-loader")
-    ) {
-      addVueTransform(optionsField);
-    }
-
-    if (
-      loaderField &&
-      (framework === "svelte" || framework === "auto") &&
-      loaderField.includes("svelte-loader")
-    ) {
-      addSveltePreprocess(optionsField);
-    }
-
-    const uses = normalizeUse((rule as any).use);
-    uses.forEach((use) => {
-      const loader = typeof use === "string" ? use : use?.loader;
-      const opts = typeof use === "string" ? undefined : use?.options;
-
-      if (!loader) return;
+  if (enabled) {
+    walkRules(rules, (rule) => {
+      const loaderField = (rule as any).loader;
+      const optionsField = (rule as any).options;
 
       if (
+        loaderField &&
         (framework === "react" || framework === "auto") &&
-        loader.includes("babel-loader")
+        loaderField.includes("babel-loader")
       ) {
-        addBabelPlugin(opts);
+        addBabelPlugin(optionsField);
       }
 
       if (
+        loaderField &&
         (framework === "vue" || framework === "auto") &&
-        loader.includes("vue-loader")
+        loaderField.includes("vue-loader")
       ) {
-        addVueTransform(opts);
+        addVueTransform(optionsField);
       }
 
       if (
+        loaderField &&
         (framework === "svelte" || framework === "auto") &&
-        loader.includes("svelte-loader")
+        loaderField.includes("svelte-loader")
       ) {
-        addSveltePreprocess(opts);
+        addSveltePreprocess(optionsField);
       }
+
+      const uses = normalizeUse((rule as any).use);
+      uses.forEach((use) => {
+        const loader = typeof use === "string" ? use : use?.loader;
+        const opts = typeof use === "string" ? undefined : use?.options;
+
+        if (!loader) return;
+
+        if (
+          (framework === "react" || framework === "auto") &&
+          loader.includes("babel-loader")
+        ) {
+          addBabelPlugin(opts);
+        }
+
+        if (
+          (framework === "vue" || framework === "auto") &&
+          loader.includes("vue-loader")
+        ) {
+          addVueTransform(opts);
+        }
+
+        if (
+          (framework === "svelte" || framework === "auto") &&
+          loader.includes("svelte-loader")
+        ) {
+          addSveltePreprocess(opts);
+        }
+      });
     });
-  });
+  }
 
   configWithDevServer.module = { ...(configWithDevServer.module || {}), rules };
 
@@ -190,22 +206,22 @@ export function withClickToSource(
   });
 
   const originalSetup = configWithDevServer.devServer?.setupMiddlewares;
-  configWithDevServer.devServer = {
-    ...(configWithDevServer.devServer || {}),
-    setupMiddlewares: (
-      middlewares: unknown[],
-      devServer?: { app?: DevServerApp }
-    ) => {
-      if (devServer?.app) {
-        devServer.app.use((req, res, next) =>
-          handler(req, res, next)
-        );
-      }
-      return typeof originalSetup === "function"
-        ? originalSetup(middlewares, devServer)
-        : middlewares;
-    },
-  };
+  if (enabled) {
+    configWithDevServer.devServer = {
+      ...(configWithDevServer.devServer || {}),
+      setupMiddlewares: (
+        middlewares: unknown[],
+        devServer?: { app?: DevServerApp }
+      ) => {
+        if (devServer?.app) {
+          devServer.app.use((req, res, next) => handler(req, res, next));
+        }
+        return typeof originalSetup === "function"
+          ? originalSetup(middlewares, devServer)
+          : middlewares;
+      },
+    };
+  }
 
   return configWithDevServer;
 }

@@ -3,6 +3,15 @@
   "title": "click-to-source dev-server",
   "type": "object",
   "properties": {
+    "buildTarget": {
+      "type": "string"
+    },
+    "host": {
+      "type": "string"
+    },
+    "port": {
+      "type": "number"
+    },
     "clickToSource": {
       "type": "object",
       "properties": {

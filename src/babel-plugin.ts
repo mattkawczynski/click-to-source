@@ -1,5 +1,5 @@
 import type { PluginObj, PluginPass } from "@babel/core";
-import { DATA_ATTR } from "./constants";
+import { DATA_ATTR } from "./constants.ts";
 
 interface BabelPluginOptions {
   enabled?: boolean;

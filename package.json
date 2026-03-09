@@ -1,7 +1,7 @@
 {
   "name": "click-to-source",
   "version": "1.0.7",
-  "description": "Ctrl+Click any UI element in development to open its source in your editor",
+  "description": "Hold a configurable hotkey and click any UI element in development to open its source in your editor",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -56,6 +56,7 @@
       "import": "./dist/server/open-handler.mjs",
       "require": "./dist/server/open-handler.cjs"
     },
+    "./package.json": "./package.json",
     "./angular/dev-server": {
       "require": "./dist/angular/dev-server.cjs"
     },
@@ -74,11 +75,13 @@
     "prepack": "npm run build",
     "pack:local": "npm pack",
     "release:check-unpublished": "node scripts/check-unpublished.cjs",
-    "test": "node --test --experimental-test-isolation=none --experimental-strip-types \"tests/**/*.test.ts\"",
-    "test:smoke": "node scripts/smoke-test.cjs",
+    "test": "tsx --test \"tests/**/*.test.ts\"",
+    "test:smoke:vite": "node scripts/smoke-test.cjs",
+    "test:smoke:angular": "node scripts/smoke-test-angular.cjs",
+    "test:smoke": "npm run test:smoke:vite && npm run test:smoke:angular",
     "type-check": "tsc --noEmit",
     "verify": "npm run build && npm run type-check && npm run test && npm pack --dry-run",
-    "prepublishOnly": "npm run verify"
+    "prepublishOnly": "npm run verify && npm run test:smoke"
   },
   "keywords": [
     "vscode",
@@ -111,15 +114,15 @@
     "parse5": "^7.1.2"
   },
   "peerDependencies": {
+    "@angular-devkit/architect": ">=0.1700.0 <1.0.0",
+    "@angular-devkit/build-angular": ">=17.0.0 <22.0.0",
     "@babel/core": "^7.0.0",
+    "@sveltejs/vite-plugin-svelte": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0",
     "@vitejs/plugin-react": "^4.0.0 || ^5.0.0",
     "@vitejs/plugin-vue": "^5.0.0 || ^6.0.0",
-    "@sveltejs/vite-plugin-svelte": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0",
     "@vue/compiler-core": "^3.0.0",
     "svelte": "^4.0.0 || ^5.0.0",
-    "webpack": "^5.0.0",
-    "@angular-devkit/architect": ">=0.1700.0 <1.0.0",
-    "@angular-devkit/build-angular": ">=17.0.0 <22.0.0"
+    "webpack": "^5.0.0"
   },
   "peerDependenciesMeta": {
     "@vitejs/plugin-react": {
@@ -148,13 +151,14 @@
     }
   },
   "devDependencies": {
-    "@vue/compiler-core": "^3.0.0",
     "@types/babel__core": "^7.20.5",
     "@types/babel__traverse": "^7.20.5",
     "@types/node": "^20.10.0",
     "@types/webpack": "^5.28.5",
+    "@vue/compiler-core": "^3.0.0",
     "svelte": "^5.53.7",
     "tsup": "^8.0.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.0",
     "vite": "^6.4.1"
   },

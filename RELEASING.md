@@ -17,6 +17,7 @@ Before cutting a release:
 2. `CHANGELOG.md` is updated for the next version.
 3. `npm run verify` passes locally.
 4. `npm run test:smoke` passes locally.
+5. If the release changes runtime behavior or uncovered integrations, manually exercise the checked-in examples that are not yet in smoke coverage.
 
 ## Local Validation
 
@@ -25,6 +26,11 @@ npm run verify
 npm run test:smoke
 npm run pack:local
 ```
+
+Manual validation is still expected for:
+
+1. `examples/webpack-react-example`
+2. `examples/rspack-react-example`
 
 If the change touches packaging or setup, install the tarball into a separate app before releasing:
 
@@ -68,5 +74,6 @@ npx click-to-source setup
 
 1. `npm run verify` uses `npm pack --dry-run`. It validates package contents but does not create a reusable tarball.
 2. `npm run pack:local` creates a real tarball and rebuilds first via `prepack`.
-3. `npm run test:smoke` currently validates the packed-install path with a temporary Vite React app.
-4. Other integrations still need end-to-end validation. Track that work in `TODO.md`.
+3. `npm run test:smoke` validates packed-install flows for temporary Vite React, Vue, Svelte, and Angular apps.
+4. Webpack and Rspack still require manual example validation until they have smoke coverage.
+5. Remaining integration gaps are tracked in `TODO.md`.

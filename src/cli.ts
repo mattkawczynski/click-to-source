@@ -129,6 +129,26 @@ export function patchViteConfig(
     }
   }
 
+  if (framework === "vue" || framework === "svelte") {
+    const replacementName =
+      framework === "vue" ? "clickToSourceVue" : "clickToSourceSvelte";
+    const originalName = framework === "vue" ? "vue" : "svelte";
+    const callInfo = findCallExpression(updated, originalName);
+
+    if (callInfo) {
+      const args = callInfo.args.trim();
+      const replacement =
+        args.length > 0
+          ? `${replacementName}({ ${framework}: ${args} })`
+          : `${replacementName}()`;
+      updated =
+        updated.slice(0, callInfo.start) +
+        replacement +
+        updated.slice(callInfo.end);
+      updated = removeUnusedFrameworkImport(updated, framework);
+    }
+  }
+
   const alreadyHasPlugin = updated.includes(`${pluginName}(`);
   const pluginsRegex = /plugins\s*:\s*\[/;
   if (!alreadyHasPlugin) {
@@ -149,6 +169,82 @@ export function patchViteConfig(
   return true;
 }
 
+function findCallExpression(
+  source: string,
+  callee: string
+): { start: number; end: number; args: string } | null {
+  const match = new RegExp(`\\b${callee}\\s*\\(`).exec(source);
+  if (!match || match.index === undefined) return null;
+
+  const start = match.index;
+  const openParen = source.indexOf("(", start);
+  if (openParen === -1) return null;
+
+  let depth = 0;
+  let quote: '"' | "'" | "`" | null = null;
+  let escaped = false;
+
+  for (let index = openParen; index < source.length; index += 1) {
+    const char = source[index];
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char as '"' | "'" | "`";
+      continue;
+    }
+
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          start,
+          end: index + 1,
+          args: source.slice(openParen + 1, index),
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function removeUnusedFrameworkImport(source: string, framework: Framework): string {
+  if (framework === "vue" && !/\bvue\s*\(/.test(source)) {
+    return source.replace(
+      /^\s*import\s+vue\s+from\s+["']@vitejs\/plugin-vue["'];?\r?\n?/m,
+      ""
+    );
+  }
+
+  if (framework === "svelte" && !/\bsvelte\s*\(/.test(source)) {
+    return source.replace(
+      /^\s*import\s+\{\s*svelte\s*\}\s+from\s+["']@sveltejs\/vite-plugin-svelte["'];?\r?\n?/m,
+      ""
+    );
+  }
+
+  return source;
+}
+
 export function patchAngularConfig(root: string): boolean {
   const angularPath = path.join(root, "angular.json");
   if (!fs.existsSync(angularPath)) return false;
@@ -157,7 +253,7 @@ export function patchAngularConfig(root: string): boolean {
 
   Object.values<any>(config.projects).forEach((project) => {
     if (!project.architect?.serve) return;
-    project.architect.serve.builder = "click-to-source/angular:dev-server";
+    project.architect.serve.builder = "click-to-source:dev-server";
     project.architect.serve.options = project.architect.serve.options || {};
     project.architect.serve.options.clickToSource =
       project.architect.serve.options.clickToSource || {};

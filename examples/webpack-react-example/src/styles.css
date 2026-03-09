@@ -1,0 +1,53 @@
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: "Segoe UI", sans-serif;
+  background: #f5f1e8;
+  color: #1f1a17;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+.stack {
+  display: grid;
+  gap: 12px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a5a2b;
+}
+
+.card {
+  margin-top: 24px;
+  padding: 20px;
+  border-radius: 18px;
+  background: #fffaf3;
+  box-shadow: 0 10px 30px rgba(63, 39, 20, 0.08);
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}
+
+.actions button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: #1f1a17;
+  color: #fffaf3;
+  cursor: pointer;
+}

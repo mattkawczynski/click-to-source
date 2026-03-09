@@ -113,6 +113,66 @@ test("patchViteConfig preserves existing react options and adds clickToSourceRea
   assert.match(config, /clickToSourceReact\(\)/);
 });
 
+test("patchViteConfig replaces vue() with clickToSourceVue() and preserves options", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-vue-options-"));
+  const configPath = path.join(root, "vite.config.ts");
+
+  fs.writeFileSync(
+    configPath,
+    [
+      'import { defineConfig } from "vite";',
+      'import vue from "@vitejs/plugin-vue";',
+      "",
+      "export default defineConfig({",
+      '  plugins: [vue({ template: { transformAssetUrls: false } })],',
+      "});",
+      "",
+    ].join("\n")
+  );
+
+  const updated = patchViteConfig(configPath, "vue");
+  const config = fs.readFileSync(configPath, "utf8");
+
+  assert.equal(updated, true);
+  assert.match(config, /import \{ clickToSourceVue \} from "click-to-source\/vite";/);
+  assert.doesNotMatch(config, /@vitejs\/plugin-vue/);
+  assert.match(
+    config,
+    /clickToSourceVue\(\{ vue: \{ template: \{ transformAssetUrls: false \} \} \}\)/
+  );
+  assert.doesNotMatch(config, /\bvue\(/);
+});
+
+test("patchViteConfig replaces svelte() with clickToSourceSvelte() and preserves options", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-svelte-options-"));
+  const configPath = path.join(root, "vite.config.js");
+
+  fs.writeFileSync(
+    configPath,
+    [
+      'import { defineConfig } from "vite";',
+      'import { svelte } from "@sveltejs/vite-plugin-svelte";',
+      "",
+      "export default defineConfig({",
+      '  plugins: [svelte({ compilerOptions: { dev: true } })],',
+      "});",
+      "",
+    ].join("\n")
+  );
+
+  const updated = patchViteConfig(configPath, "svelte");
+  const config = fs.readFileSync(configPath, "utf8");
+
+  assert.equal(updated, true);
+  assert.match(config, /import \{ clickToSourceSvelte \} from "click-to-source\/vite";/);
+  assert.doesNotMatch(config, /@sveltejs\/vite-plugin-svelte/);
+  assert.match(
+    config,
+    /clickToSourceSvelte\(\{ svelte: \{ compilerOptions: \{ dev: true \} \} \}\)/
+  );
+  assert.doesNotMatch(config, /\bsvelte\(/);
+});
+
 test("runSetup patches Angular builder configuration", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-angular-"));
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
@@ -191,7 +251,7 @@ test("runSetup patches Angular builder configuration", () => {
   assert.match(entryFile, /import "click-to-source\/init";/);
   assert.equal(
     angularConfig.projects.app.architect.serve.builder,
-    "click-to-source/angular:dev-server"
+    "click-to-source:dev-server"
   );
   assert.deepEqual(
     angularConfig.projects.app.architect.serve.options.clickToSource,

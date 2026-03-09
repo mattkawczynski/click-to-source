@@ -4,30 +4,37 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/mattkawczynski/click-to-source/ci.yml?branch=main&label=ci)](https://github.com/mattkawczynski/click-to-source/actions/workflows/ci.yml)
 [![License](https://img.shields.io/npm/l/click-to-source)](LICENSE)
 
-Ctrl+Click any UI element in development to open its source in your editor.
+Hold your configured hotkey to preview an element, then click to open its source in your editor.
 
-Works by injecting a `data-click-to-source` attribute at build time, then using a runtime click handler to open the file at the right line and column.
+Works by injecting a `data-click-to-source` attribute at build time, then using a runtime hover/click handler to preview and open the file at the right line and column.
 
 ## Validation Status
 
 Currently validated in automated tests:
 
-1. Vite React dev/build flow
-2. Vite React source line accuracy
-3. CLI setup for Vite React
-4. Angular config patching
-5. Open-file endpoint security and Windows editor launching
+1. Vite React dev/build flow, including source line accuracy
+2. Vite Vue dev/build flow
+3. Vite Svelte dev/build flow
+4. Angular dev-server template injection for external HTML templates
+5. CLI setup for React, Vue, Svelte, and Angular project shapes
+6. Runtime hotkey preview highlighting and delayed initialization when instrumented DOM appears after boot
+7. Open-file endpoint security and Windows editor launching
+
+Manually validated across the checked-in examples:
+
+1. React example
+2. Vue example
+3. Svelte example
+4. Angular example
+5. Webpack React example
+6. Rspack React example
 
 Implemented, but not yet validated end-to-end in CI:
 
-1. Vite Vue
-2. Vite Svelte
-3. Angular runtime/template injection
-4. Webpack
-5. Rspack
-6. Editor behavior outside the current VS Code-focused coverage
-
-Treat the unvalidated integrations as experimental until they are covered in the roadmap in `TODO.md`.
+1. Webpack
+2. Rspack
+3. Editor behavior outside the current VS Code-focused coverage
+4. Monorepo and `allowOutsideWorkspace` scenarios
 
 ## Integrations
 
@@ -57,12 +64,13 @@ This will:
 
 If it cannot safely patch your config, it prints manual steps.
 
-Then start your dev server and Ctrl+Click any rendered element.
+Then start your dev server, hold the configured hotkey to preview a rendered element, and click to open it.
 
 Expected behavior:
 
 1. The DOM includes `data-click-to-source="path:line:column"` on elements.
-2. Ctrl+Click opens the matching file in your editor.
+2. Holding the configured hotkey previews the hovered element with a visible outline.
+3. Clicking while the configured hotkey is held opens the matching file in your editor.
 
 ## Vite
 
@@ -94,8 +102,7 @@ export default defineConfig({
 import "click-to-source/init";
 ```
 
-The React path above is the currently validated Vite integration.
-The Vue and Svelte paths below are implemented, but not yet covered by end-to-end CI tests.
+The React, Vue, and Svelte paths below are all validated in automated smoke tests.
 
 ### Vue
 
@@ -191,7 +198,7 @@ This uses a custom dev-server builder to inject `data-click-to-source` into temp
     "your-app": {
       "architect": {
         "serve": {
-          "builder": "click-to-source/angular:dev-server",
+          "builder": "click-to-source:dev-server",
           "options": {
             "clickToSource": {
               "enabled": true
@@ -213,6 +220,21 @@ Notes:
 
 1. External HTML templates are supported. Inline templates may not include `data-click-to-source`.
 2. This is dev-only. Production builds are unaffected.
+
+## Examples
+
+Checked-in example apps live in:
+
+1. `examples/react-example`
+2. `examples/vue-example`
+3. `examples/svelte-example`
+4. `examples/angular-example`
+5. `examples/webpack-react-example`
+6. `examples/rspack-react-example`
+
+Each example is intended to build locally and reflect the currently supported setup shape.
+All six examples were manually validated locally.
+Webpack and Rspack are not yet covered by the automated smoke suite.
 
 ## Configuration
 
@@ -275,7 +297,7 @@ Angular builder options:
 ## How It Works
 
 1. Build time: A framework-specific transform injects `data-click-to-source="path:line:column"` into element tags.
-2. Runtime: A click handler finds the closest element with that attribute, then opens your editor at that location.
+2. Runtime: Holding the configured hotkey previews the hovered instrumented element, and clicking opens your editor at that location.
 3. Dev server: A lightweight endpoint triggers `code --goto` (or other editors).
 
 ## Troubleshooting
@@ -299,7 +321,9 @@ npm run verify
 npm run test:smoke
 ```
 
-`npm run test` currently uses Node 22's `--experimental-strip-types` support.
+`npm run test` runs through `tsx` so the TypeScript tests are executed without Node's experimental strip-types mode.
+`npm run test:smoke` validates packed-install flows for temporary Vite React, Vue, Svelte, and Angular apps.
+Webpack and Rspack currently rely on unit coverage plus manual example validation.
 
 The package is live on npm as `click-to-source`.
 Repository docs:

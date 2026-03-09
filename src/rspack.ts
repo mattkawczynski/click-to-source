@@ -2,4 +2,4 @@ export {
   withClickToSource,
   type ClickToSourceFramework,
   type ClickToSourceWebpackOptions,
-} from "./webpack";
+} from "./webpack.ts";

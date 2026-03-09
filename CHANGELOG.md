@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- checked-in Vue, Svelte, Angular, Webpack React, and Rspack React example apps for manual validation.
+- automated smoke coverage for packed-install Vite Vue, Vite Svelte, and Angular flows.
+- runtime preview highlighting so holding the configured hotkey visibly outlines the hovered instrumented element before click.
+
+### Fixed
+
+- deferred runtime initialization until `data-click-to-source` exists in the DOM, which fixes Angular and other late-rendered app boots where instrumentation appears after `click-to-source/init` runs.
+- Webpack and Rspack integration defaults so production builds do not inject source markers.
+- test execution stability by switching the TypeScript test runner from Node's experimental strip-types path to `tsx`.
+
 ## [1.0.7] - 2026-03-08
 
 ### Fixed
