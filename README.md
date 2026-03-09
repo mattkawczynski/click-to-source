@@ -8,7 +8,28 @@ Ctrl+Click any UI element in development to open its source in your editor.
 
 Works by injecting a `data-click-to-source` attribute at build time, then using a runtime click handler to open the file at the right line and column.
 
-## What It Supports
+## Validation Status
+
+Currently validated in automated tests:
+
+1. Vite React dev/build flow
+2. Vite React source line accuracy
+3. CLI setup for Vite React
+4. Angular config patching
+5. Open-file endpoint security and Windows editor launching
+
+Implemented, but not yet validated end-to-end in CI:
+
+1. Vite Vue
+2. Vite Svelte
+3. Angular runtime/template injection
+4. Webpack
+5. Rspack
+6. Editor behavior outside the current VS Code-focused coverage
+
+Treat the unvalidated integrations as experimental until they are covered in the roadmap in `TODO.md`.
+
+## Integrations
 
 1. Vite React with `react()` plus `clickToSourceReact()`
 2. Vite Vue
@@ -72,6 +93,9 @@ export default defineConfig({
 // main.tsx
 import "click-to-source/init";
 ```
+
+The React path above is the currently validated Vite integration.
+The Vue and Svelte paths below are implemented, but not yet covered by end-to-end CI tests.
 
 ### Vue
 
@@ -278,8 +302,11 @@ npm run test:smoke
 `npm run test` currently uses Node 22's `--experimental-strip-types` support.
 
 The package is live on npm as `click-to-source`.
-Release details and the GitHub Actions publish flow live in `RELEASING.md`.
-Change history lives in `CHANGELOG.md`.
+Repository docs:
+
+1. `CHANGELOG.md`: released changes
+2. `RELEASING.md`: maintainer release process
+3. `TODO.md`: validation gaps and roadmap
 
 ## License
 
