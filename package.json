@@ -1,6 +1,6 @@
 {
   "name": "click-to-source",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Hold a configurable hotkey and click any UI element in development to open, inspect, copy, or link to its source",
   "type": "module",
   "main": "./dist/index.cjs",
