@@ -221,7 +221,7 @@ function createCaptureCommand(tempDir: string, name: string, captureFile: string
   } else {
     fs.writeFileSync(
       fullPath,
-      `#!/bin/sh\nprintf '%s\\n' \"$@\" > \"${captureFile.replace(/"/g, '\\"')}\"\n`
+      `#!/bin/sh\necho \"$@\" > \"${captureFile.replace(/"/g, '\\"')}\"\n`
     );
     fs.chmodSync(fullPath, 0o755);
   }
