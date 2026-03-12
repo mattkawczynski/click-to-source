@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ClickToSourceLocator } from "../src/locator.ts";
 import { configManager } from "../src/config.ts";
-import { DATA_ATTR, HIGHLIGHT_CLASS, PREVIEW_CLASS } from "../src/constants.ts";
+import {
+  DATA_ATTR,
+  HIGHLIGHT_CLASS,
+  PREVIEW_CLASS,
+  TOAST_ID,
+  TOOLTIP_ID,
+} from "../src/constants.ts";
 
 class FakeClassList {
   private values = new Set<string>();
@@ -24,11 +30,14 @@ class FakeElement {
   public parentElement: FakeElement | null = null;
   public children: FakeElement[] = [];
   public classList = new FakeClassList();
+  public style: Record<string, string> = {};
+  public textContent = "";
+  public id = "";
   private attributes = new Map<string, string>();
   public readonly tagName: string;
 
   constructor(tagName: string) {
-    this.tagName = tagName;
+    this.tagName = tagName.toLowerCase();
   }
 
   appendChild(child: FakeElement): FakeElement {
@@ -37,11 +46,25 @@ class FakeElement {
     return child;
   }
 
+  remove(): void {
+    if (!this.parentElement) return;
+    this.parentElement.children = this.parentElement.children.filter(
+      (child) => child !== this,
+    );
+    this.parentElement = null;
+  }
+
   setAttribute(name: string, value: string): void {
+    if (name === "id") {
+      this.id = value;
+    }
     this.attributes.set(name, value);
   }
 
   getAttribute(name: string): string | null {
+    if (name === "id" && this.id) {
+      return this.id;
+    }
     return this.attributes.get(name) ?? null;
   }
 
@@ -57,22 +80,27 @@ class FakeElement {
 
     return null;
   }
-}
 
-class FakeStyleElement extends FakeElement {
-  public id = "";
-  public textContent = "";
-
-  constructor() {
-    super("style");
+  matches(selector: string): boolean {
+    return matchesSelector(this, selector);
   }
+
+  focus(): void {}
+
+  select(): void {}
 }
 
 class FakeDocument {
   public readonly head = new FakeElement("head");
+  public readonly body = new FakeElement("body");
+  public readonly documentElement = new FakeElement("html");
   private listeners = new Map<string, Set<(event: any) => void>>();
-  private elementsById = new Map<string, FakeStyleElement>();
   private hoverTarget: FakeElement | null = null;
+
+  constructor() {
+    this.documentElement.appendChild(this.head);
+    this.documentElement.appendChild(this.body);
+  }
 
   addEventListener(type: string, listener: (event: any) => void): void {
     if (!this.listeners.has(type)) {
@@ -90,25 +118,11 @@ class FakeDocument {
   }
 
   createElement(tagName: string): FakeElement {
-    if (tagName === "style") {
-      const style = new FakeStyleElement();
-      Object.defineProperty(style, "id", {
-        get: () => styleId.get(style) ?? "",
-        set: (value: string) => {
-          styleId.set(style, value);
-          this.elementsById.set(value, style);
-        },
-        configurable: true,
-        enumerable: true,
-      });
-      return style;
-    }
-
     return new FakeElement(tagName);
   }
 
-  getElementById(id: string): FakeStyleElement | null {
-    return this.elementsById.get(id) ?? null;
+  getElementById(id: string): FakeElement | null {
+    return findById(this.documentElement, id);
   }
 
   elementFromPoint(): FakeElement | null {
@@ -118,9 +132,11 @@ class FakeDocument {
   setHoverTarget(element: FakeElement | null): void {
     this.hoverTarget = element;
   }
-}
 
-const styleId = new WeakMap<FakeStyleElement, string>();
+  execCommand(command: string): boolean {
+    return command === "copy";
+  }
+}
 
 class FakeStorage {
   private store = new Map<string, string>();
@@ -134,9 +150,36 @@ class FakeStorage {
   }
 }
 
+function findById(root: FakeElement, id: string): FakeElement | null {
+  if (root.id === id) {
+    return root;
+  }
+
+  for (const child of root.children) {
+    const match = findById(child, id);
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
+}
+
 function matchesSelector(element: FakeElement, selector: string): boolean {
+  return selector
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .some((part) => matchesSelectorPart(element, part));
+}
+
+function matchesSelectorPart(element: FakeElement, selector: string): boolean {
   if (selector.startsWith("#")) {
-    return element.getAttribute("id") === selector.slice(1);
+    return element.id === selector.slice(1);
+  }
+
+  if (selector.startsWith(".")) {
+    return element.classList.contains(selector.slice(1));
   }
 
   const attrMatch = selector.match(/^\[(.+)\]$/);
@@ -144,46 +187,100 @@ function matchesSelector(element: FakeElement, selector: string): boolean {
     return element.getAttribute(attrMatch[1]) !== null;
   }
 
-  return false;
+  return element.tagName === selector.toLowerCase();
 }
 
-test("holding the configured hotkey previews the hovered source element", () => {
+function setupLocatorEnvironment() {
   const originalWindow = (globalThis as any).window;
   const originalDocument = (globalThis as any).document;
   const originalElement = (globalThis as any).Element;
+  const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "navigator",
+  );
+  const originalFetch = globalThis.fetch;
 
   const document = new FakeDocument();
+  const storage = new FakeStorage();
+  const openedUrls: string[] = [];
+  const copiedTexts: string[] = [];
   const windowListeners = new Map<string, Set<() => void>>();
 
-  try {
-    (globalThis as any).Element = FakeElement;
-    (globalThis as any).document = document;
-    (globalThis as any).window = {
-      localStorage: new FakeStorage(),
-      addEventListener(type: string, listener: () => void) {
-        if (!windowListeners.has(type)) {
-          windowListeners.set(type, new Set());
-        }
-        windowListeners.get(type)?.add(listener);
+  (globalThis as any).Element = FakeElement;
+  (globalThis as any).document = document;
+  (globalThis as any).window = {
+    localStorage: storage,
+    innerWidth: 1280,
+    innerHeight: 720,
+    location: {
+      hostname: "127.0.0.1",
+    },
+    addEventListener(type: string, listener: () => void) {
+      if (!windowListeners.has(type)) {
+        windowListeners.set(type, new Set());
+      }
+      windowListeners.get(type)?.add(listener);
+    },
+    removeEventListener(type: string, listener: () => void) {
+      windowListeners.get(type)?.delete(listener);
+    },
+    open(url: string) {
+      openedUrls.push(url);
+    },
+  };
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {
+      clipboard: {
+        async writeText(text: string) {
+          copiedTexts.push(text);
+        },
       },
-      removeEventListener(type: string, listener: () => void) {
-        windowListeners.get(type)?.delete(listener);
-      },
-    };
+    },
+  });
 
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ ok: false }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  return {
+    document,
+    openedUrls,
+    copiedTexts,
+    cleanup() {
+      configManager.reset();
+      globalThis.fetch = originalFetch;
+      (globalThis as any).window = originalWindow;
+      (globalThis as any).document = originalDocument;
+      (globalThis as any).Element = originalElement;
+      if (originalNavigatorDescriptor) {
+        Object.defineProperty(globalThis, "navigator", originalNavigatorDescriptor);
+      } else {
+        delete (globalThis as any).navigator;
+      }
+    },
+  };
+}
+
+test("holding the configured hotkey previews the hovered source element and shows a tooltip", () => {
+  const env = setupLocatorEnvironment();
+
+  try {
     configManager.reset();
     configManager.set("hotkey", "alt");
 
-    const root = new FakeElement("main");
+    const root = env.document.body.appendChild(new FakeElement("main"));
     const target = root.appendChild(new FakeElement("button"));
     target.setAttribute(DATA_ATTR, "src/App.tsx:10:3");
-    document.setHoverTarget(target);
+    env.document.setHoverTarget(target);
 
     const locator = new ClickToSourceLocator();
     locator.start();
 
     try {
-      document.dispatchEvent("mousemove", {
+      env.document.dispatchEvent("mousemove", {
         target,
         clientX: 10,
         clientY: 20,
@@ -195,62 +292,41 @@ test("holding the configured hotkey previews the hovered source element", () => 
 
       assert.equal(target.classList.contains(PREVIEW_CLASS), false);
 
-      document.dispatchEvent("keydown", { key: "Alt" });
+      env.document.dispatchEvent("keydown", { key: "Alt" });
 
+      const tooltip = env.document.getElementById(TOOLTIP_ID);
       assert.equal(target.classList.contains(PREVIEW_CLASS), true);
-      assert.ok(document.getElementById("__click-to-source-highlight-styles"));
+      assert.ok(env.document.getElementById("__click-to-source-highlight-styles"));
+      assert.ok(tooltip);
+      assert.equal(tooltip?.style.display, "block");
+      assert.match(tooltip?.textContent ?? "", /Open src\/App\.tsx:10:3/);
 
-      document.dispatchEvent("keyup", { key: "Alt" });
+      env.document.dispatchEvent("keyup", { key: "Alt" });
 
       assert.equal(target.classList.contains(PREVIEW_CLASS), false);
+      assert.equal(tooltip?.style.display, "none");
     } finally {
       locator.destroy();
     }
   } finally {
-    configManager.reset();
-    (globalThis as any).window = originalWindow;
-    (globalThis as any).document = originalDocument;
-    (globalThis as any).Element = originalElement;
+    env.cleanup();
   }
 });
 
-test("ctrl+click still flashes the target element", async () => {
-  const originalWindow = (globalThis as any).window;
-  const originalDocument = (globalThis as any).document;
-  const originalElement = (globalThis as any).Element;
-  const originalFetch = globalThis.fetch;
-
-  const document = new FakeDocument();
-  const openedUrls: string[] = [];
+test("ctrl+click still flashes the target element and opens the fallback URL", async () => {
+  const env = setupLocatorEnvironment();
 
   try {
-    (globalThis as any).Element = FakeElement;
-    (globalThis as any).document = document;
-    (globalThis as any).window = {
-      localStorage: new FakeStorage(),
-      addEventListener() {},
-      removeEventListener() {},
-      open(url: string) {
-        openedUrls.push(url);
-      },
-    };
-
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ ok: false }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-
     configManager.reset();
 
-    const target = new FakeElement("button");
+    const target = env.document.body.appendChild(new FakeElement("button"));
     target.setAttribute(DATA_ATTR, "src/App.tsx:10:3");
 
     const locator = new ClickToSourceLocator();
     locator.start();
 
     try {
-      document.dispatchEvent("click", {
+      env.document.dispatchEvent("click", {
         target,
         button: 0,
         ctrlKey: true,
@@ -262,20 +338,266 @@ test("ctrl+click still flashes the target element", async () => {
         stopImmediatePropagation() {},
       });
 
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       assert.equal(target.classList.contains(HIGHLIGHT_CLASS), true);
 
       await new Promise((resolve) => setTimeout(resolve, 250));
 
       assert.equal(target.classList.contains(HIGHLIGHT_CLASS), false);
-      assert.equal(openedUrls[0], "vscode://file/src/App.tsx:10:3");
+      assert.equal(env.openedUrls[0], "vscode://file/src/App.tsx:10:3");
     } finally {
       locator.destroy();
     }
   } finally {
+    env.cleanup();
+  }
+});
+
+test("copy action copies the mapped source location instead of opening the editor", async () => {
+  const env = setupLocatorEnvironment();
+
+  try {
     configManager.reset();
-    globalThis.fetch = originalFetch;
-    (globalThis as any).window = originalWindow;
-    (globalThis as any).document = originalDocument;
-    (globalThis as any).Element = originalElement;
+    configManager.updateConfig({
+      action: "copy",
+      pathMappings: [{ from: "src", to: "C:/workspace/src" }],
+    });
+
+    const target = env.document.body.appendChild(new FakeElement("button"));
+    target.setAttribute(DATA_ATTR, "src/App.tsx:10:3");
+
+    const locator = new ClickToSourceLocator();
+    locator.start();
+
+    try {
+      env.document.dispatchEvent("click", {
+        target,
+        button: 0,
+        ctrlKey: true,
+        altKey: false,
+        metaKey: false,
+        shiftKey: false,
+        preventDefault() {},
+        stopPropagation() {},
+        stopImmediatePropagation() {},
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      assert.deepEqual(env.copiedTexts, ["C:/workspace/src/App.tsx:10:3"]);
+      assert.equal(env.openedUrls.length, 0);
+      assert.match(
+        env.document.getElementById(TOAST_ID)?.textContent ?? "",
+        /Copied C:\/workspace\/src\/App\.tsx:10:3/,
+      );
+    } finally {
+      locator.destroy();
+    }
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("inspect action does not open or copy and shows the source toast", async () => {
+  const env = setupLocatorEnvironment();
+
+  try {
+    configManager.reset();
+    configManager.set("action", "inspect");
+
+    const target = env.document.body.appendChild(new FakeElement("button"));
+    target.setAttribute(DATA_ATTR, "src/App.tsx:10:3");
+
+    const locator = new ClickToSourceLocator();
+    locator.start();
+
+    try {
+      env.document.dispatchEvent("click", {
+        target,
+        button: 0,
+        ctrlKey: true,
+        altKey: false,
+        metaKey: false,
+        shiftKey: false,
+        preventDefault() {},
+        stopPropagation() {},
+        stopImmediatePropagation() {},
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      assert.equal(env.openedUrls.length, 0);
+      assert.equal(env.copiedTexts.length, 0);
+      assert.match(
+        env.document.getElementById(TOAST_ID)?.textContent ?? "",
+        /Source src\/App\.tsx:10:3/,
+      );
+    } finally {
+      locator.destroy();
+    }
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("preview styles include the animated pulse border", () => {
+  const env = setupLocatorEnvironment();
+
+  try {
+    configManager.reset();
+
+    const target = env.document.body.appendChild(new FakeElement("button"));
+    target.setAttribute(DATA_ATTR, "src/App.tsx:10:3");
+    env.document.setHoverTarget(target);
+
+    const locator = new ClickToSourceLocator();
+    locator.start();
+
+    try {
+      env.document.dispatchEvent("mousemove", {
+        target,
+        clientX: 10,
+        clientY: 20,
+        ctrlKey: true,
+        altKey: false,
+        metaKey: false,
+        shiftKey: false,
+      });
+
+      const styles = env.document.getElementById("__click-to-source-highlight-styles");
+      assert.ok(styles);
+      assert.match(styles?.textContent ?? "", /cts-preview-pulse/);
+    } finally {
+      locator.destroy();
+    }
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("include selectors limit which instrumented elements respond", async () => {
+  const env = setupLocatorEnvironment();
+
+  try {
+    configManager.reset();
+    configManager.set("includeSelectors", ["button"]);
+
+    const wrapper = env.document.body.appendChild(new FakeElement("div"));
+    wrapper.setAttribute(DATA_ATTR, "src/App.tsx:5:1");
+
+    const button = wrapper.appendChild(new FakeElement("button"));
+    button.setAttribute(DATA_ATTR, "src/App.tsx:10:3");
+
+    const locator = new ClickToSourceLocator();
+    locator.start();
+
+    try {
+      env.document.dispatchEvent("click", {
+        target: wrapper,
+        button: 0,
+        ctrlKey: true,
+        altKey: false,
+        metaKey: false,
+        shiftKey: false,
+        preventDefault() {},
+        stopPropagation() {},
+        stopImmediatePropagation() {},
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.equal(env.openedUrls.length, 0);
+
+      env.document.dispatchEvent("click", {
+        target: button,
+        button: 0,
+        ctrlKey: true,
+        altKey: false,
+        metaKey: false,
+        shiftKey: false,
+        preventDefault() {},
+        stopPropagation() {},
+        stopImmediatePropagation() {},
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.equal(env.openedUrls[0], "vscode://file/src/App.tsx:10:3");
+    } finally {
+      locator.destroy();
+    }
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("exclude selectors skip matching instrumented elements in favor of a parent source target", async () => {
+  const env = setupLocatorEnvironment();
+
+  try {
+    configManager.reset();
+    configManager.set("excludeSelectors", [".skip"]);
+
+    const parent = env.document.body.appendChild(new FakeElement("main"));
+    parent.setAttribute(DATA_ATTR, "src/App.tsx:20:1");
+
+    const child = parent.appendChild(new FakeElement("button"));
+    child.classList.add("skip");
+    child.setAttribute(DATA_ATTR, "src/App.tsx:10:3");
+
+    const locator = new ClickToSourceLocator();
+    locator.start();
+
+    try {
+      env.document.dispatchEvent("click", {
+        target: child,
+        button: 0,
+        ctrlKey: true,
+        altKey: false,
+        metaKey: false,
+        shiftKey: false,
+        preventDefault() {},
+        stopPropagation() {},
+        stopImmediatePropagation() {},
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      assert.equal(env.openedUrls[0], "vscode://file/src/App.tsx:20:1");
+    } finally {
+      locator.destroy();
+    }
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("the first-run hint is only shown once per localStorage state", () => {
+  const env = setupLocatorEnvironment();
+
+  try {
+    configManager.reset();
+    configManager.set("hotkey", "shift");
+
+    const firstLocator = new ClickToSourceLocator();
+    firstLocator.start();
+
+    assert.match(
+      env.document.getElementById(TOAST_ID)?.textContent ?? "",
+      /Hold Shift to preview elements, then click to open source\./,
+    );
+
+    firstLocator.destroy();
+    assert.equal(env.document.getElementById(TOAST_ID), null);
+
+    const secondLocator = new ClickToSourceLocator();
+    secondLocator.start();
+
+    try {
+      assert.equal(env.document.getElementById(TOAST_ID), null);
+    } finally {
+      secondLocator.destroy();
+    }
+  } finally {
+    env.cleanup();
   }
 });

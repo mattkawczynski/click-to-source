@@ -1,6 +1,21 @@
 import { configManager } from "./config";
-import { DATA_ATTR, HIGHLIGHT_CLASS, PREVIEW_CLASS } from "./constants";
-import { openInEditor, type SourceLocation } from "./open";
+import {
+  DATA_ATTR,
+  HIGHLIGHT_CLASS,
+  PREVIEW_CLASS,
+  TOAST_ID,
+  TOOLTIP_ID,
+} from "./constants";
+import {
+  copySourceLocation,
+  formatSourceLocation,
+  openInEditor,
+  type SourceLocation,
+} from "./open";
+
+const FIRST_RUN_HINT_KEY = "__click_to_source_hint_seen_v3";
+const TOOLTIP_OFFSET = 16;
+const STATUS_DURATION_MS = 2200;
 
 /**
  * Runtime locator that previews instrumented elements and opens their source on hotkey+click
@@ -18,6 +33,7 @@ export class ClickToSourceLocator {
     clientY: 0,
     hasPosition: false,
   };
+  private toastTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.boundClickHandler = this.handleClick.bind(this);
@@ -35,9 +51,10 @@ export class ClickToSourceLocator {
     document.addEventListener("keydown", this.boundKeyDownHandler, true);
     document.addEventListener("keyup", this.boundKeyUpHandler, true);
     window.addEventListener("blur", this.boundBlurHandler);
+    this.showFirstRunHint();
   }
 
-  private handleClick(e: MouseEvent): void {
+  private async handleClick(e: MouseEvent): Promise<void> {
     const config = configManager.getConfig();
 
     // Check if feature is enabled
@@ -64,8 +81,25 @@ export class ClickToSourceLocator {
     const location = this.parseSource(raw);
     if (!location) return;
 
-    // Open in editor
-    openInEditor(location, config);
+    const action = config.action;
+
+    switch (action) {
+      case "copy": {
+        const copied = await copySourceLocation(location, config);
+        this.showToast(
+          copied
+            ? `Copied ${formatSourceLocation(location, config)}`
+            : "Copy failed. Check clipboard permissions.",
+        );
+        return;
+      }
+      case "inspect":
+        this.showToast(`Source ${formatSourceLocation(location, config)}`);
+        return;
+      case "open":
+      default:
+        await openInEditor(location, config);
+    }
   }
 
   private handleMouseMove(e: MouseEvent): void {
@@ -82,6 +116,7 @@ export class ClickToSourceLocator {
     }
 
     this.setPreviewElement(this.findSourceElement(e.target));
+    this.updateTooltipPosition();
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
@@ -185,12 +220,64 @@ export class ClickToSourceLocator {
       this.lastPointer.clientY,
     );
     this.setPreviewElement(this.findSourceElement(target));
+    this.updateTooltipPosition();
   }
 
   private findSourceElement(target: EventTarget | null): Element | null {
     if (!(target instanceof Element)) return null;
-    if (target.closest("#__click-to-source-container")) return null;
-    return target.closest(`[${DATA_ATTR}]`);
+    if (
+      target.closest("#__click-to-source-container") ||
+      target.closest(`#${TOOLTIP_ID}`) ||
+      target.closest(`#${TOAST_ID}`)
+    ) {
+      return null;
+    }
+
+    const config = configManager.getConfig();
+    let current: Element | null = target;
+
+    while (current) {
+      const candidate: Element | null = current.closest(`[${DATA_ATTR}]`);
+      if (!candidate) {
+        return null;
+      }
+
+      if (this.isIgnoredElement(candidate, config)) {
+        current = candidate.parentElement;
+        continue;
+      }
+
+      return candidate;
+    }
+
+    return null;
+  }
+
+  private isIgnoredElement(
+    element: Element,
+    config: ReturnType<typeof configManager.getConfig>,
+  ): boolean {
+    if (this.matchesAnySelector(element, config.excludeSelectors)) {
+      return true;
+    }
+
+    if (
+      config.includeSelectors.length > 0 &&
+      !this.matchesAnySelector(element, config.includeSelectors)
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private matchesAnySelector(element: Element, selectors: string[]): boolean {
+    return selectors.some((selector) => {
+      const normalized = selector.trim();
+      return normalized.length > 0 && typeof element.matches === "function"
+        ? element.matches(normalized)
+        : false;
+    });
   }
 
   private setPreviewElement(element: Element | null): void {
@@ -203,11 +290,13 @@ export class ClickToSourceLocator {
     this.previewElement?.classList.remove(PREVIEW_CLASS);
     this.previewElement = element;
     this.previewElement?.classList.add(PREVIEW_CLASS);
+    this.updateTooltipContent();
   }
 
   private clearPreview(): void {
     this.previewElement?.classList.remove(PREVIEW_CLASS);
     this.previewElement = null;
+    this.hideTooltip();
   }
 
   private ensureHighlightStyles(): void {
@@ -218,10 +307,26 @@ export class ClickToSourceLocator {
     const style = document.createElement("style");
     style.id = "__click-to-source-highlight-styles";
     style.textContent = `
+      @keyframes cts-preview-pulse {
+        0% {
+          outline-color: rgba(88, 166, 255, 0.7);
+          box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.08);
+        }
+        50% {
+          outline-color: rgba(88, 166, 255, 1);
+          box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.14);
+        }
+        100% {
+          outline-color: rgba(88, 166, 255, 0.7);
+          box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.08);
+        }
+      }
+
       .${PREVIEW_CLASS} {
         outline: 2px dashed rgba(88, 166, 255, 0.95);
         outline-offset: 2px;
         background-color: rgba(88, 166, 255, 0.08);
+        animation: cts-preview-pulse 1.1s ease-in-out infinite;
       }
 
       .${HIGHLIGHT_CLASS} {
@@ -229,8 +334,192 @@ export class ClickToSourceLocator {
         outline-offset: 2px;
         box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.18);
       }
+
+      #${TOOLTIP_ID} {
+        position: fixed;
+        max-width: min(420px, calc(100vw - 24px));
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: rgba(12, 18, 28, 0.95);
+        color: #f5f7fb;
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+        pointer-events: none;
+        z-index: 1000000;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      #${TOAST_ID} {
+        position: fixed;
+        left: 50%;
+        bottom: 24px;
+        transform: translateX(-50%);
+        max-width: min(520px, calc(100vw - 24px));
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: rgba(12, 18, 28, 0.95);
+        color: #f5f7fb;
+        font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+        z-index: 1000000;
+      }
     `;
     document.head.appendChild(style);
+  }
+
+  private updateTooltipContent(): void {
+    const element = this.previewElement;
+    if (!element) {
+      this.hideTooltip();
+      return;
+    }
+
+    const raw = element.getAttribute(DATA_ATTR);
+    const location = raw ? this.parseSource(raw) : null;
+    if (!location) {
+      this.hideTooltip();
+      return;
+    }
+
+    const config = configManager.getConfig();
+    const tooltip = this.getOrCreateOverlay(TOOLTIP_ID);
+    tooltip.textContent = `${this.getActionLabel(location, config)} ${formatSourceLocation(location, config)}`;
+    this.updateTooltipPosition();
+  }
+
+  private updateTooltipPosition(): void {
+    const tooltip = this.getOverlay(TOOLTIP_ID);
+    if (!tooltip || !this.lastPointer.hasPosition) {
+      return;
+    }
+
+    const viewportWidth =
+      typeof window.innerWidth === "number"
+        ? window.innerWidth
+        : this.lastPointer.clientX + TOOLTIP_OFFSET;
+    const viewportHeight =
+      typeof window.innerHeight === "number"
+        ? window.innerHeight
+        : this.lastPointer.clientY + TOOLTIP_OFFSET;
+
+    tooltip.style.display = "block";
+    tooltip.style.left = `${Math.min(
+      viewportWidth - TOOLTIP_OFFSET,
+      this.lastPointer.clientX + TOOLTIP_OFFSET,
+    )}px`;
+    tooltip.style.top = `${Math.min(
+      viewportHeight - TOOLTIP_OFFSET,
+      this.lastPointer.clientY + TOOLTIP_OFFSET,
+    )}px`;
+  }
+
+  private hideTooltip(): void {
+    const tooltip = this.getOverlay(TOOLTIP_ID);
+    if (tooltip) {
+      tooltip.style.display = "none";
+    }
+  }
+
+  private showFirstRunHint(): void {
+    if (typeof window === "undefined" || !("localStorage" in window)) {
+      return;
+    }
+
+    try {
+      if (window.localStorage.getItem(FIRST_RUN_HINT_KEY)) {
+        return;
+      }
+
+      const config = configManager.getConfig();
+      const action = this.describeAction(config.action);
+      this.showToast(
+        `Hold ${this.formatHotkey(config.hotkey)} to preview elements, then click to ${action}.`,
+        5000,
+      );
+      window.localStorage.setItem(FIRST_RUN_HINT_KEY, "1");
+    } catch {
+      // Ignore storage failures and continue without a persisted hint flag.
+    }
+  }
+
+  private formatHotkey(hotkey: string): string {
+    switch (hotkey) {
+      case "ctrl":
+        return "Ctrl";
+      case "alt":
+        return "Alt";
+      case "meta":
+        return "Meta";
+      case "shift":
+        return "Shift";
+      default:
+        return "Ctrl";
+    }
+  }
+
+  private describeAction(
+    action: ReturnType<typeof configManager.getConfig>["action"],
+  ): string {
+    switch (action) {
+      case "copy":
+        return "copy source";
+      case "inspect":
+        return "inspect source";
+      case "open":
+      default:
+        return "open source";
+    }
+  }
+
+  private getActionLabel(
+    _location: SourceLocation,
+    config: ReturnType<typeof configManager.getConfig>,
+  ): string {
+    switch (config.action) {
+      case "copy":
+        return "Copy";
+      case "inspect":
+        return "Inspect";
+      case "open":
+      default:
+        return "Open";
+    }
+  }
+
+  private showToast(message: string, durationMs = STATUS_DURATION_MS): void {
+    const toast = this.getOrCreateOverlay(TOAST_ID);
+    toast.textContent = message;
+    toast.style.display = "block";
+
+    if (this.toastTimeout) {
+      clearTimeout(this.toastTimeout);
+    }
+
+    this.toastTimeout = setTimeout(() => {
+      toast.style.display = "none";
+      this.toastTimeout = null;
+    }, durationMs);
+  }
+
+  private getOverlay(id: string): HTMLElement | null {
+    return typeof document.getElementById === "function"
+      ? (document.getElementById(id) as HTMLElement | null)
+      : null;
+  }
+
+  private getOrCreateOverlay(id: string): HTMLElement {
+    const existing = this.getOverlay(id);
+    if (existing) {
+      return existing;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.id = id;
+    overlay.style.display = "none";
+    (document.body || document.documentElement).appendChild(overlay);
+    return overlay;
   }
 
   /**
@@ -245,5 +534,11 @@ export class ClickToSourceLocator {
     document.removeEventListener("keyup", this.boundKeyUpHandler, true);
     window.removeEventListener("blur", this.boundBlurHandler);
     this.clearPreview();
+    if (this.toastTimeout) {
+      clearTimeout(this.toastTimeout);
+      this.toastTimeout = null;
+    }
+    this.getOverlay(TOOLTIP_ID)?.remove();
+    this.getOverlay(TOAST_ID)?.remove();
   }
 }

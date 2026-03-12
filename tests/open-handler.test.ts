@@ -5,6 +5,7 @@ import os from "node:os";
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
+  buildLaunchCandidates,
   createOpenRequestHandler,
   isLoopbackAddress,
   isSameOriginBrowserRequest,
@@ -208,4 +209,112 @@ test("openInEditor uses the Windows shell for .cmd launchers", {
   );
 
   assert.equal(ok, true);
+});
+
+function createCaptureCommand(tempDir: string, name: string, captureFile: string): string {
+  const fullPath = path.join(tempDir, process.platform === "win32" ? `${name}.cmd` : name);
+  if (process.platform === "win32") {
+    fs.writeFileSync(
+      fullPath,
+      `@echo off\r\n>%~dp0\\${path.basename(captureFile)} echo %*\r\nexit /b 0\r\n`
+    );
+  } else {
+    fs.writeFileSync(
+      fullPath,
+      `#!/bin/sh\nprintf '%s\\n' \"$@\" > \"${captureFile.replace(/"/g, '\\"')}\"\n`
+    );
+    fs.chmodSync(fullPath, 0o755);
+  }
+  return fullPath;
+}
+
+test("buildLaunchCandidates uses the correct args for known editors", () => {
+  const location = {
+    file: "src/App.tsx",
+    line: 12,
+    column: 5,
+  };
+
+  assert.deepEqual(buildLaunchCandidates(location, "vscode")[0], {
+    command: process.platform === "win32" ? "code.cmd" : "code",
+    args: ["--goto", "src/App.tsx:12:5"],
+  });
+  assert.deepEqual(buildLaunchCandidates(location, "cursor")[0], {
+    command: process.platform === "win32" ? "cursor.cmd" : "cursor",
+    args: ["--goto", "src/App.tsx:12:5"],
+  });
+  assert.deepEqual(buildLaunchCandidates(location, "webstorm")[0], {
+    command: process.platform === "win32" ? "webstorm64.exe" : "webstorm",
+    args: ["--line", "12", "src/App.tsx"],
+  });
+});
+
+test("openInEditor resolves vscode, cursor, and webstorm launchers from PATH", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cts-editor-path-"));
+  const originalPath = process.env.PATH || "";
+
+  try {
+    const cases = [
+      { editor: "vscode", command: "code", expected: "--goto src/App.tsx:12:5" },
+      { editor: "cursor", command: "cursor", expected: "--goto src/App.tsx:12:5" },
+    ] as const;
+
+    for (const testCase of cases) {
+      const captureFile = path.join(tempDir, `${testCase.editor}.txt`);
+      createCaptureCommand(tempDir, testCase.command, captureFile);
+      process.env.PATH = `${tempDir}${path.delimiter}${originalPath}`;
+
+      const ok = openInEditor(
+        {
+          file: "src/App.tsx",
+          line: 12,
+          column: 5,
+        },
+        {
+          cwd: tempDir,
+          editor: testCase.editor,
+        }
+      );
+
+      assert.equal(ok, true, `${testCase.editor} launcher should be found on PATH`);
+      const capture = fs.readFileSync(captureFile, "utf8").trim();
+      assert.match(capture, new RegExp(testCase.expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    }
+  } finally {
+    process.env.PATH = originalPath;
+  }
+});
+
+test("handler applies path mappings before opening files", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cts-handler-map-"));
+  const workspace = path.join(tempDir, "workspace");
+  const mappedRoot = path.join(tempDir, "mapped-root");
+  const captureFile = path.join(tempDir, "captured.txt");
+  fs.mkdirSync(workspace, { recursive: true });
+  fs.mkdirSync(mappedRoot, { recursive: true });
+  const editorPath = createCaptureCommand(tempDir, "capture-editor", captureFile);
+
+  const handler = createOpenRequestHandler({
+    cwd: workspace,
+    editor: editorPath,
+    allowOutsideWorkspace: true,
+    pathMappings: [
+      {
+        from: "/workspace",
+        to: mappedRoot.replace(/\\/g, "/"),
+      },
+    ],
+  });
+  const req = createMockRequest({
+    url: `/__click_to_source/open?file=${encodeURIComponent("/workspace/src/App.tsx")}&line=10&column=3`,
+  });
+  const { response, statusCode, body } = createMockResponse();
+
+  handler(req, response);
+
+  assert.equal(statusCode(), 200);
+  const payload = JSON.parse(body()) as { ok: boolean };
+  assert.equal(payload.ok, true);
+  const capture = fs.readFileSync(captureFile, "utf8").trim();
+  assert.ok(capture.includes(mappedRoot));
 });

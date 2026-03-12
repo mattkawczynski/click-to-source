@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from "http";
 import { DEFAULT_SERVER_PATH } from "./constants.ts";
 import { createOpenRequestHandler } from "./server/open-handler.ts";
 import clickToSourceBabelPlugin from "./babel-plugin.ts";
+import type { PathMapping } from "./path-mapping.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -16,6 +17,7 @@ export interface ClickToSourceWebpackOptions {
   editor?: string;
   allowRemote?: boolean;
   allowOutsideWorkspace?: boolean;
+  pathMappings?: PathMapping[];
 }
 
 type DevServerApp = {
@@ -203,6 +205,7 @@ export function withClickToSource(
     editor: options.editor,
     allowRemote: options.allowRemote,
     allowOutsideWorkspace: options.allowOutsideWorkspace,
+    pathMappings: options.pathMappings,
   });
 
   const originalSetup = configWithDevServer.devServer?.setupMiddlewares;

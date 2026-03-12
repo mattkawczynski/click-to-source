@@ -1,4 +1,7 @@
 import { DEFAULT_SERVER_PATH } from "./constants";
+import type { PathMapping } from "./path-mapping";
+
+export type SourceAction = "open" | "copy" | "inspect";
 
 export interface ClickToSourceConfig {
   enabled: boolean;
@@ -9,6 +12,10 @@ export interface ClickToSourceConfig {
   serverPath: string;
   serverBaseUrl?: string;
   openIn: "vscode" | "cursor" | "webstorm";
+  pathMappings: PathMapping[];
+  action: SourceAction;
+  includeSelectors: string[];
+  excludeSelectors: string[];
 }
 
 const STORAGE_KEY = "__click_to_source_config";
@@ -21,7 +28,34 @@ const DEFAULT_CONFIG: ClickToSourceConfig = {
   showButton: true,
   serverPath: DEFAULT_SERVER_PATH,
   openIn: "vscode",
+  pathMappings: [],
+  action: "open",
+  includeSelectors: [],
+  excludeSelectors: [],
 };
+
+function normalizeAction(value: unknown): SourceAction {
+  return value === "copy" || value === "inspect" ? value : "open";
+}
+
+function normalizeConfig(partial: Partial<ClickToSourceConfig> | null | undefined): ClickToSourceConfig {
+  const source = partial ?? {};
+
+  return {
+    enabled: source.enabled ?? DEFAULT_CONFIG.enabled,
+    hotkey: source.hotkey ?? DEFAULT_CONFIG.hotkey,
+    position: source.position ?? DEFAULT_CONFIG.position,
+    theme: source.theme ?? DEFAULT_CONFIG.theme,
+    showButton: source.showButton ?? DEFAULT_CONFIG.showButton,
+    serverPath: source.serverPath ?? DEFAULT_CONFIG.serverPath,
+    serverBaseUrl: source.serverBaseUrl,
+    openIn: source.openIn ?? DEFAULT_CONFIG.openIn,
+    pathMappings: source.pathMappings ?? DEFAULT_CONFIG.pathMappings,
+    action: normalizeAction(source.action),
+    includeSelectors: source.includeSelectors ?? DEFAULT_CONFIG.includeSelectors,
+    excludeSelectors: source.excludeSelectors ?? DEFAULT_CONFIG.excludeSelectors,
+  };
+}
 
 /**
  * Configuration manager for click-to-source
@@ -48,8 +82,12 @@ export class ConfigManager {
       const stored = window.localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        this.config = { ...DEFAULT_CONFIG, ...parsed };
+        this.config = normalizeConfig(parsed);
+        this.save();
+        return;
       }
+
+      this.config = { ...DEFAULT_CONFIG };
     } catch (error) {
       console.warn("[click-to-source] Failed to load config from localStorage");
       this.config = { ...DEFAULT_CONFIG };
@@ -82,7 +120,7 @@ export class ConfigManager {
    * Update configuration
    */
   updateConfig(partial: Partial<ClickToSourceConfig>): void {
-    this.config = { ...this.config, ...partial };
+    this.config = normalizeConfig({ ...this.config, ...partial });
     this.save();
     this.notify();
   }
@@ -110,7 +148,10 @@ export class ConfigManager {
     key: K,
     value: ClickToSourceConfig[K]
   ): void {
-    this.config[key] = value;
+    this.config = normalizeConfig({
+      ...this.config,
+      [key]: value,
+    });
     this.save();
     this.notify();
   }

@@ -1,0 +1,21 @@
+{
+  "name": "click-to-source-next-example",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1 --port 3003",
+    "build": "next build"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.28.4",
+    "click-to-source": "file:../..",
+    "next": "^15.5.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.9.3"
+  }
+}

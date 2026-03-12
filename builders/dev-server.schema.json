@@ -33,6 +33,22 @@
         "allowOutsideWorkspace": {
           "type": "boolean",
           "default": false
+        },
+        "pathMappings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": ["from", "to"],
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": true

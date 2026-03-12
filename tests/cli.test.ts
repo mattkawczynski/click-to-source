@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { patchViteConfig, runCli, runSetup } from "../src/cli.ts";
+import {
+  patchBundlerConfig,
+  patchViteConfig,
+  runCli,
+  runSetup,
+} from "../src/cli.ts";
 
 function countOccurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
@@ -173,6 +178,38 @@ test("patchViteConfig replaces svelte() with clickToSourceSvelte() and preserves
   assert.doesNotMatch(config, /\bsvelte\(/);
 });
 
+test("patchViteConfig explains manual steps when the plugins field is not an inline array", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-vite-manual-"));
+  const configPath = path.join(root, "vite.config.ts");
+  const logs: string[] = [];
+
+  fs.writeFileSync(
+    configPath,
+    [
+      'import { defineConfig } from "vite";',
+      'import react from "@vitejs/plugin-react";',
+      "",
+      "const plugins = [react()];",
+      "",
+      "export default defineConfig({",
+      "  plugins,",
+      "});",
+      "",
+    ].join("\n")
+  );
+
+  const updated = patchViteConfig(configPath, "react", (message) =>
+    logs.push(message)
+  );
+
+  assert.equal(updated, false);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /not declared as an inline array/i);
+  assert.match(logs[0], /Manual Vite setup:/);
+  assert.match(logs[0], /clickToSourceReact/);
+  assert.match(logs[0], /click-to-source\/init/);
+});
+
 test("runSetup patches Angular builder configuration", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-angular-"));
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
@@ -259,6 +296,179 @@ test("runSetup patches Angular builder configuration", () => {
   );
 });
 
+test("patchBundlerConfig wraps a webpack config", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-webpack-config-"));
+  const configPath = path.join(root, "webpack.config.cjs");
+
+  fs.writeFileSync(
+    configPath,
+    [
+      'const path = require("node:path");',
+      "",
+      "module.exports = {",
+      '  entry: "./src/index.jsx",',
+      "  output: {",
+      '    path: path.resolve(__dirname, "dist"),',
+      '    filename: "bundle.js",',
+      "  },",
+      "};",
+      "",
+    ].join("\n")
+  );
+
+  const updated = patchBundlerConfig(configPath, "webpack");
+  const config = fs.readFileSync(configPath, "utf8");
+
+  assert.equal(updated, true);
+  assert.match(config, /require\("click-to-source\/webpack"\)/);
+  assert.match(config, /module\.exports = \(_env, argv\) => \{/);
+  assert.match(config, /if \(config\.mode == null && argv\?\.mode\)/);
+  assert.match(config, /return withClickToSource\(config\);/);
+});
+
+test("patchBundlerConfig explains manual steps when the export is not a plain object", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-webpack-manual-"));
+  const configPath = path.join(root, "webpack.config.cjs");
+  const logs: string[] = [];
+
+  fs.writeFileSync(
+    configPath,
+    [
+      "function createConfig() {",
+      "  return {",
+      '    entry: "./src/index.jsx",',
+      "  };",
+      "}",
+      "",
+      "module.exports = createConfig();",
+      "",
+    ].join("\n")
+  );
+
+  const updated = patchBundlerConfig(configPath, "webpack", (message) =>
+    logs.push(message)
+  );
+
+  assert.equal(updated, false);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /not a plain object literal/i);
+  assert.match(logs[0], /Manual webpack setup:/);
+  assert.match(logs[0], /withClickToSource/);
+  assert.match(logs[0], /click-to-source\/init/);
+});
+
+test("runSetup patches webpack projects", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-webpack-"));
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify(
+      {
+        name: "tmp-webpack-app",
+        private: true,
+        dependencies: {
+          react: "^18.2.0",
+          "react-dom": "^18.2.0",
+        },
+        devDependencies: {
+          webpack: "^5.0.0",
+        },
+      },
+      null,
+      2
+    )
+  );
+
+  fs.writeFileSync(
+    path.join(root, "src", "index.jsx"),
+    [
+      'import React from "react";',
+      'import { createRoot } from "react-dom/client";',
+      'createRoot(document.getElementById("root")).render(<div>Hello</div>);',
+      "",
+    ].join("\n")
+  );
+
+  fs.writeFileSync(
+    path.join(root, "webpack.config.cjs"),
+    [
+      "module.exports = {",
+      '  entry: "./src/index.jsx",',
+      "};",
+      "",
+    ].join("\n")
+  );
+
+  const result = runSetup(root, () => {});
+  const entryFile = fs.readFileSync(path.join(root, "src", "index.jsx"), "utf8");
+  const config = fs.readFileSync(path.join(root, "webpack.config.cjs"), "utf8");
+
+  assert.equal(result.framework, "react");
+  assert.equal(result.bundler, "webpack");
+  assert.equal(result.entryUpdated, true);
+  assert.equal(result.configUpdated, true);
+  assert.match(entryFile, /import "click-to-source\/init";/);
+  assert.match(config, /require\("click-to-source\/webpack"\)/);
+  assert.match(config, /return withClickToSource\(config\);/);
+});
+
+test("runSetup patches rspack projects", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-rspack-"));
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify(
+      {
+        name: "tmp-rspack-app",
+        private: true,
+        dependencies: {
+          react: "^18.2.0",
+          "react-dom": "^18.2.0",
+        },
+        devDependencies: {
+          "@rspack/core": "^1.0.0",
+        },
+      },
+      null,
+      2
+    )
+  );
+
+  fs.writeFileSync(
+    path.join(root, "src", "index.jsx"),
+    [
+      'import React from "react";',
+      'import { createRoot } from "react-dom/client";',
+      'createRoot(document.getElementById("root")).render(<div>Hello</div>);',
+      "",
+    ].join("\n")
+  );
+
+  fs.writeFileSync(
+    path.join(root, "rspack.config.cjs"),
+    [
+      "module.exports = {",
+      '  entry: "./src/index.jsx",',
+      "};",
+      "",
+    ].join("\n")
+  );
+
+  const result = runSetup(root, () => {});
+  const entryFile = fs.readFileSync(path.join(root, "src", "index.jsx"), "utf8");
+  const config = fs.readFileSync(path.join(root, "rspack.config.cjs"), "utf8");
+
+  assert.equal(result.framework, "react");
+  assert.equal(result.bundler, "rspack");
+  assert.equal(result.entryUpdated, true);
+  assert.equal(result.configUpdated, true);
+  assert.match(entryFile, /import "click-to-source\/init";/);
+  assert.match(config, /require\("click-to-source\/rspack"\)/);
+  assert.match(config, /return withClickToSource\(config\);/);
+});
+
 test("runCli returns a non-zero exit code for invalid usage", () => {
   const logs: string[] = [];
   const exitCode = runCli(["unknown-command"], process.cwd(), (message) =>
@@ -267,4 +477,37 @@ test("runCli returns a non-zero exit code for invalid usage", () => {
 
   assert.equal(exitCode, 1);
   assert.deepEqual(logs, ["Usage: click-to-source setup"]);
+});
+
+test("runSetup explains manual entry and config setup when files are missing", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-missing-files-"));
+  const logs: string[] = [];
+
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify(
+      {
+        name: "tmp-react-app",
+        private: true,
+        dependencies: {
+          react: "^18.2.0",
+          "react-dom": "^18.2.0",
+        },
+        devDependencies: {
+          vite: "^6.4.1",
+          "@vitejs/plugin-react": "^4.7.0",
+        },
+      },
+      null,
+      2
+    )
+  );
+
+  const result = runSetup(root, (message) => logs.push(message));
+
+  assert.equal(result.entryFile, null);
+  assert.equal(result.entryUpdated, false);
+  assert.equal(result.configUpdated, false);
+  assert.ok(logs.some((message) => /Manual entry setup:/i.test(message)));
+  assert.ok(logs.some((message) => /Manual Vite setup:/i.test(message)));
 });

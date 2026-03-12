@@ -11,6 +11,7 @@ const externals = [
   "webpack",
   "@angular-devkit/architect",
   "@angular-devkit/build-angular",
+  "next",
 ];
 
 export default defineConfig([
@@ -24,6 +25,11 @@ export default defineConfig([
       svelte: "src/svelte.ts",
       webpack: "src/webpack.ts",
       rspack: "src/rspack.ts",
+      next: "src/next.ts",
+      "next-init": "src/next-init.ts",
+      nuxt: "src/nuxt.ts",
+      astro: "src/astro.ts",
+      storybook: "src/storybook.ts",
       "server/open-handler": "src/server/open-handler.ts",
     },
     format: ["esm", "cjs"],
@@ -41,8 +47,28 @@ export default defineConfig([
   },
   {
     entry: {
+      "nuxt-plugin": "src/nuxt-plugin.ts",
+      "storybook-preview": "src/storybook-preview.ts",
+    },
+    format: ["esm", "cjs"],
+    dts: false,
+    splitting: false,
+    sourcemap: true,
+    clean: false,
+    shims: true,
+    platform: "node",
+    outExtension({ format }) {
+      return {
+        js: format === "esm" ? ".mjs" : ".cjs",
+      };
+    },
+    external: externals,
+  },
+  {
+    entry: {
       "angular/dev-server": "src/angular/dev-server.ts",
       "angular/template-loader": "src/angular/template-loader.ts",
+      "next-loader": "src/next-loader.ts",
     },
     format: ["cjs"],
     dts: false,

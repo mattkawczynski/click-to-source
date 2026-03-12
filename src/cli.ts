@@ -14,8 +14,96 @@ export interface SetupResult {
   configUpdated: boolean;
 }
 
+type ManualSetupTarget =
+  | { kind: "vite"; framework: Framework; filePath?: string }
+  | { kind: "bundler"; bundler: "webpack" | "rspack"; filePath?: string }
+  | { kind: "angular" }
+  | { kind: "entry"; framework: Framework };
+
 function log(message: string): void {
   console.log(`[click-to-source] ${message}`);
+}
+
+function formatManualSetupHint(
+  title: string,
+  steps: string[]
+): string {
+  return [title, ...steps.map((step, index) => `${index + 1}. ${step}`)].join(
+    "\n"
+  );
+}
+
+function getEntryCandidates(framework: Framework): string[] {
+  if (framework === "angular") {
+    return ["src/main.ts"];
+  }
+
+  return ["src/main.tsx", "src/main.ts", "src/index.tsx", "src/index.ts"];
+}
+
+function getVitePluginName(framework: Framework): string {
+  return framework === "react"
+    ? "clickToSourceReact"
+    : framework === "vue"
+    ? "clickToSourceVue"
+    : framework === "svelte"
+    ? "clickToSourceSvelte"
+    : "clickToSource";
+}
+
+function getViteManualSnippet(framework: Framework): string {
+  if (framework === "react") {
+    return 'plugins: [react(), clickToSourceReact()]';
+  }
+
+  return `plugins: [${getVitePluginName(framework)}()]`;
+}
+
+function getManualSetupHint(target: ManualSetupTarget): string {
+  if (target.kind === "entry") {
+    return formatManualSetupHint("Manual entry setup:", [
+      'Add `import "click-to-source/init";` to your app bootstrap file.',
+      `Start with one of: ${getEntryCandidates(target.framework)
+        .map((candidate) => `\`${candidate}\``)
+        .join(", ")}.`,
+      "Compare the exact bootstrap shape with the README Manual Setup section.",
+    ]);
+  }
+
+  if (target.kind === "vite") {
+    const fileLabel = target.filePath ? `\`${path.basename(target.filePath)}\`` : "`vite.config.*`";
+    const pluginName = getVitePluginName(target.framework);
+
+    return formatManualSetupHint("Manual Vite setup:", [
+      `Open ${fileLabel} and import \`${pluginName}\` from \`click-to-source/vite\`.`,
+      `Add \`${getViteManualSnippet(target.framework)}\` to the Vite plugins list.`,
+      'Add `import "click-to-source/init";` to your entry file if it is not present already.',
+      "Compare the result with the README Manual Setup section for your framework.",
+    ]);
+  }
+
+  if (target.kind === "bundler") {
+    const importPath =
+      target.bundler === "webpack"
+        ? "click-to-source/webpack"
+        : "click-to-source/rspack";
+    const configName = target.filePath
+      ? `\`${path.basename(target.filePath)}\``
+      : `\`${target.bundler}.config.*\``;
+
+    return formatManualSetupHint(`Manual ${target.bundler} setup:`, [
+      `Open ${configName} and import \`withClickToSource\` from \`${importPath}\`.`,
+      "Wrap the exported config with `withClickToSource(...)` and preserve your existing `mode` handling for production builds.",
+      'Add `import "click-to-source/init";` to your entry file if it is not present already.',
+      "Compare the result with the README Manual Setup section for your bundler.",
+    ]);
+  }
+
+  return formatManualSetupHint("Manual Angular setup:", [
+    'Update `angular.json` so the `serve.builder` value is `click-to-source:dev-server`.',
+    'Keep `src/main.ts` importing `click-to-source/init`.',
+    "Compare the final shape with the README Manual Setup section for Angular.",
+  ]);
 }
 
 function readJson(filePath: string): any | null {
@@ -97,6 +185,26 @@ export function findViteConfig(root: string): string | null {
   return null;
 }
 
+export function findBundlerConfig(
+  root: string,
+  bundler: "webpack" | "rspack"
+): string | null {
+  const baseName = bundler === "webpack" ? "webpack.config" : "rspack.config";
+  const candidates = [
+    `${baseName}.js`,
+    `${baseName}.cjs`,
+    `${baseName}.mjs`,
+    `${baseName}.ts`,
+  ];
+
+  for (const file of candidates) {
+    const full = path.join(root, file);
+    if (fs.existsSync(full)) return full;
+  }
+
+  return null;
+}
+
 export function patchViteConfig(
   filePath: string,
   framework: Framework,
@@ -158,8 +266,18 @@ export function patchViteConfig(
         (match) => `${match}\n    ${pluginName}(),`
       );
     } else {
+      const hasNonInlinePluginsField = /(^|[,{]\s*)plugins\s*(?::|,)/m.test(
+        updated
+      );
+      const reason = hasNonInlinePluginsField
+        ? "Vite config has a `plugins` field, but it is not declared as an inline array, so automatic patching would be unsafe."
+        : "Could not find a `plugins` array in the Vite config.";
       logger(
-        "Could not find plugins array in Vite config. Please add the plugin manually."
+        `${reason}\n${getManualSetupHint({
+          kind: "vite",
+          framework,
+          filePath,
+        })}`
       );
       return false;
     }
@@ -167,6 +285,57 @@ export function patchViteConfig(
 
   fs.writeFileSync(filePath, updated);
   return true;
+}
+
+export function patchBundlerConfig(
+  filePath: string,
+  bundler: "webpack" | "rspack",
+  logger: Logger = log
+): boolean {
+  const content = fs.readFileSync(filePath, "utf8");
+  const isCjs =
+    filePath.endsWith(".cjs") ||
+    content.includes("module.exports") ||
+    content.includes("require(");
+  const importPath =
+    bundler === "webpack"
+      ? "click-to-source/webpack"
+      : "click-to-source/rspack";
+
+  let updated = content;
+
+  if (!updated.includes(importPath)) {
+    const importLine = isCjs
+      ? `const { withClickToSource } = require("${importPath}");`
+      : `import { withClickToSource } from "${importPath}";`;
+    updated = `${importLine}\n${updated}`;
+  }
+
+  if (updated.includes("withClickToSource(")) {
+    fs.writeFileSync(filePath, updated);
+    return true;
+  }
+
+  const wrappedModuleExport = wrapObjectExport(updated, "module.exports = ");
+  if (wrappedModuleExport) {
+    fs.writeFileSync(filePath, wrappedModuleExport);
+    return true;
+  }
+
+  const wrappedDefaultExport = wrapObjectExport(updated, "export default ");
+  if (wrappedDefaultExport) {
+    fs.writeFileSync(filePath, wrappedDefaultExport);
+    return true;
+  }
+
+  logger(
+    `Could not safely patch ${path.basename(filePath)} because the exported config is not a plain object literal.\n${getManualSetupHint({
+      kind: "bundler",
+      bundler,
+      filePath,
+    })}`
+  );
+  return false;
 }
 
 function findCallExpression(
@@ -245,6 +414,67 @@ function removeUnusedFrameworkImport(source: string, framework: Framework): stri
   return source;
 }
 
+function wrapObjectExport(
+  source: string,
+  assignment: string
+): string | null {
+  const assignmentIndex = source.indexOf(assignment);
+  if (assignmentIndex === -1) return null;
+
+  const openBraceIndex = source.indexOf("{", assignmentIndex + assignment.length);
+  if (openBraceIndex === -1) return null;
+
+  let depth = 0;
+  let quote: '"' | "'" | "`" | null = null;
+  let escaped = false;
+
+  for (let index = openBraceIndex; index < source.length; index += 1) {
+    const char = source[index];
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char as '"' | "'" | "`";
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        const objectLiteral = source.slice(openBraceIndex, index + 1);
+        const wrappedFactory = `(_env, argv) => {
+  const config = ${objectLiteral};
+  if (config.mode == null && argv?.mode) {
+    config.mode = argv.mode;
+  }
+  return withClickToSource(config);
+}`;
+        return `${source.slice(0, assignmentIndex + assignment.length)}${wrappedFactory}${source.slice(index + 1)}`;
+      }
+    }
+  }
+
+  return null;
+}
+
 export function patchAngularConfig(root: string): boolean {
   const angularPath = path.join(root, "angular.json");
   if (!fs.existsSync(angularPath)) return false;
@@ -287,14 +517,24 @@ export function runSetup(root = process.cwd(), logger: Logger = log): SetupResul
         : `Init import already present in ${path.relative(root, entryFile)}`
     );
   } else {
-    logger("Could not find an entry file. Add `import \"click-to-source/init\";` manually.");
+    logger(
+      `Could not find an entry file automatically.\n${getManualSetupHint({
+        kind: "entry",
+        framework,
+      })}`
+    );
   }
 
   let configUpdated = false;
   if (bundler === "vite") {
     const viteConfig = findViteConfig(root);
     if (!viteConfig) {
-      logger("Vite detected but no vite.config.* found. Add the plugin manually.");
+      logger(
+        `Vite detected but no vite.config.* file was found.\n${getManualSetupHint({
+          kind: "vite",
+          framework,
+        })}`
+      );
     } else {
       configUpdated = patchViteConfig(viteConfig, framework, logger);
       if (configUpdated) {
@@ -306,11 +546,37 @@ export function runSetup(root = process.cwd(), logger: Logger = log): SetupResul
     if (configUpdated) {
       logger("Updated angular.json to use click-to-source dev-server builder.");
     } else {
-      logger("Angular detected but could not update angular.json. Please add the builder manually.");
+      logger(
+        `Angular detected but angular.json could not be updated safely.\n${getManualSetupHint({
+          kind: "angular",
+        })}`
+      );
+    }
+  } else if (bundler === "webpack" || bundler === "rspack") {
+    const bundlerConfig = findBundlerConfig(root, bundler);
+    if (!bundlerConfig) {
+      logger(
+        `${bundler} detected but no ${bundler}.config.* file was found.\n${getManualSetupHint({
+          kind: "bundler",
+          bundler,
+        })}`
+      );
+    } else {
+      configUpdated = patchBundlerConfig(bundlerConfig, bundler, logger);
+      if (configUpdated) {
+        logger(
+          `Updated ${path.relative(root, bundlerConfig)} with withClickToSource().`
+        );
+      }
     }
   } else {
     logger(
-      "Non-Vite/Angular bundler detected. Please configure click-to-source in your build tool."
+      "Detected a project shape that click-to-source cannot patch automatically.\n" +
+        getManualSetupHint({
+          kind: "entry",
+          framework,
+        }) +
+        "\nRead the README Manual Setup section for the integration that matches your build tool."
     );
   }
 

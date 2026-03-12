@@ -1,0 +1,13 @@
+{
+  "name": "click-to-source-nuxt-example",
+  "private": true,
+  "scripts": {
+    "dev": "nuxt dev --host 127.0.0.1 --port 3004",
+    "build": "nuxt build"
+  },
+  "dependencies": {
+    "click-to-source": "file:../..",
+    "nuxt": "^4.1.1",
+    "vue": "^3.5.0"
+  }
+}

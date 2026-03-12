@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "http";
 import * as childProcess from "child_process";
 import path from "path";
 import { DEFAULT_SERVER_PATH } from "../constants.ts";
+import { applyPathMappings, type PathMapping } from "../path-mapping.ts";
 
 type KnownEditor = "vscode" | "cursor" | "webstorm";
 
@@ -11,6 +12,7 @@ export interface OpenRequestOptions {
   cwd?: string;
   allowRemote?: boolean;
   allowOutsideWorkspace?: boolean;
+  pathMappings?: PathMapping[];
 }
 
 export interface OpenLocation {
@@ -44,7 +46,7 @@ function normalizeEditorId(value?: string | null): KnownEditor | null {
   }
 }
 
-function buildLaunchCandidates(
+export function buildLaunchCandidates(
   location: OpenLocation,
   editor?: string
 ): Array<{ command: string; args: string[] }> {
@@ -140,7 +142,8 @@ export function isSameOriginBrowserRequest(
 function normalizeFilePath(
   requestedFile: string,
   cwd: string,
-  allowOutsideWorkspace: boolean
+  allowOutsideWorkspace: boolean,
+  pathMappings: PathMapping[]
 ): string | null {
   const trimmed = requestedFile.trim();
   if (!trimmed || trimmed.includes("\0")) {
@@ -148,8 +151,11 @@ function normalizeFilePath(
   }
 
   const normalizedCwd = path.resolve(cwd);
+  const translated = applyPathMappings(trimmed, pathMappings);
   const normalizedFile = path.normalize(
-    path.isAbsolute(trimmed) ? trimmed : path.resolve(normalizedCwd, trimmed)
+    path.isAbsolute(translated)
+      ? translated
+      : path.resolve(normalizedCwd, translated)
   );
 
   if (allowOutsideWorkspace) {
@@ -260,7 +266,8 @@ export function createOpenRequestHandler(options: OpenRequestOptions = {}) {
     const normalizedFile = normalizeFilePath(
       file,
       workspaceCwd,
-      options.allowOutsideWorkspace === true
+      options.allowOutsideWorkspace === true,
+      options.pathMappings || []
     );
     if (!normalizedFile) {
       respondJson(res, 403, { ok: false, error: "Invalid or disallowed file path" });

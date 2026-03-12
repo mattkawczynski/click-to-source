@@ -3,6 +3,7 @@ import { createRequire } from "module";
 import { DEFAULT_SERVER_PATH } from "./constants";
 import { createOpenRequestHandler } from "./server/open-handler";
 import clickToSourceBabelPlugin from "./babel-plugin";
+import type { PathMapping } from "./path-mapping";
 
 const require = createRequire(import.meta.url);
 
@@ -14,6 +15,7 @@ export interface ClickToSourceViteOptions {
   editor?: string;
   allowRemote?: boolean;
   allowOutsideWorkspace?: boolean;
+  pathMappings?: PathMapping[];
   react?: Record<string, unknown>;
   vue?: Record<string, unknown>;
   svelte?: Record<string, unknown>;
@@ -201,6 +203,7 @@ export function clickToSource(
     editor: options.editor,
     allowRemote: options.allowRemote,
     allowOutsideWorkspace: options.allowOutsideWorkspace,
+    pathMappings: options.pathMappings,
   });
 
   const base: Plugin = {

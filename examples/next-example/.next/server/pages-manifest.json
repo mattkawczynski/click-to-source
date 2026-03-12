@@ -1,0 +1,6 @@
+{
+  "/_app": "pages/_app.js",
+  "/_error": "pages/_error.js",
+  "/_document": "pages/_document.js",
+  "/api/__click_to_source/open": "pages/api/__click_to_source/open.js"
+}

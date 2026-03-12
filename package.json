@@ -1,7 +1,7 @@
 {
   "name": "click-to-source",
   "version": "1.0.8",
-  "description": "Hold a configurable hotkey and click any UI element in development to open its source in your editor",
+  "description": "Hold a configurable hotkey and click any UI element in development to open, inspect, copy, or link to its source",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -51,6 +51,35 @@
       "import": "./dist/rspack.mjs",
       "require": "./dist/rspack.cjs"
     },
+    "./next": {
+      "types": "./dist/next.d.ts",
+      "import": "./dist/next.mjs",
+      "require": "./dist/next.cjs"
+    },
+    "./next-init": {
+      "types": "./dist/next-init.d.ts",
+      "import": "./dist/next-init.mjs",
+      "require": "./dist/next-init.cjs"
+    },
+    "./nuxt": {
+      "types": "./dist/nuxt.d.ts",
+      "import": "./dist/nuxt.mjs",
+      "require": "./dist/nuxt.cjs"
+    },
+    "./astro": {
+      "types": "./dist/astro.d.ts",
+      "import": "./dist/astro.mjs",
+      "require": "./dist/astro.cjs"
+    },
+    "./storybook": {
+      "types": "./dist/storybook.d.ts",
+      "import": "./dist/storybook.mjs",
+      "require": "./dist/storybook.cjs"
+    },
+    "./storybook-preview": {
+      "require": "./dist/storybook-preview.cjs",
+      "import": "./dist/storybook-preview.mjs"
+    },
     "./server": {
       "types": "./dist/server/open-handler.d.ts",
       "import": "./dist/server/open-handler.mjs",
@@ -77,8 +106,11 @@
     "release:check-unpublished": "node scripts/check-unpublished.cjs",
     "test": "tsx --test \"tests/**/*.test.ts\"",
     "test:smoke:vite": "node scripts/smoke-test.cjs",
+    "test:smoke:bundlers": "node scripts/smoke-test-bundlers.cjs",
+    "test:smoke:monorepo": "node scripts/smoke-test-monorepo.cjs",
     "test:smoke:angular": "node scripts/smoke-test-angular.cjs",
-    "test:smoke": "npm run test:smoke:vite && npm run test:smoke:angular",
+    "test:smoke:adoption": "node scripts/smoke-test-adoption.cjs",
+    "test:smoke": "npm run test:smoke:vite && npm run test:smoke:bundlers && npm run test:smoke:monorepo && npm run test:smoke:angular && npm run test:smoke:adoption",
     "type-check": "tsc --noEmit",
     "verify": "npm run build && npm run type-check && npm run test && npm pack --dry-run",
     "prepublishOnly": "npm run verify && npm run test:smoke"
@@ -88,13 +120,21 @@
     "development",
     "click-to-source",
     "debugging",
+    "frontend",
+    "inspect",
+    "monorepo",
     "react",
+    "nextjs",
+    "nuxt",
+    "astro",
+    "storybook",
     "vue",
     "svelte",
     "angular",
     "vite",
     "webpack",
-    "dev-tools"
+    "dev-tools",
+    "editor"
   ],
   "author": "mattkawczynski",
   "license": "MIT",
@@ -110,6 +150,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@vue/compiler-sfc": "^3.0.0",
     "magic-string": "^0.30.7",
     "parse5": "^7.1.2"
   },
@@ -117,6 +158,9 @@
     "@angular-devkit/architect": ">=0.1700.0 <1.0.0",
     "@angular-devkit/build-angular": ">=17.0.0 <22.0.0",
     "@babel/core": "^7.0.0",
+    "astro": "^5.0.0",
+    "next": "^15.0.0 || ^16.0.0",
+    "nuxt": "^4.0.0",
     "@sveltejs/vite-plugin-svelte": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0",
     "@vitejs/plugin-react": "^4.0.0 || ^5.0.0",
     "@vitejs/plugin-vue": "^5.0.0 || ^6.0.0",
@@ -148,6 +192,15 @@
     },
     "@angular-devkit/build-angular": {
       "optional": true
+    },
+    "next": {
+      "optional": true
+    },
+    "nuxt": {
+      "optional": true
+    },
+    "astro": {
+      "optional": true
     }
   },
   "devDependencies": {
@@ -155,6 +208,7 @@
     "@types/babel__traverse": "^7.20.5",
     "@types/node": "^20.10.0",
     "@types/webpack": "^5.28.5",
+    "@vitejs/plugin-react": "^5.1.0",
     "@vue/compiler-core": "^3.0.0",
     "svelte": "^5.53.7",
     "tsup": "^8.0.1",

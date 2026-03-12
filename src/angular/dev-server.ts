@@ -25,6 +25,7 @@ export interface ClickToSourceAngularOptions extends DevServerBuilderOptions {
     editor?: string;
     allowRemote?: boolean;
     allowOutsideWorkspace?: boolean;
+    pathMappings?: Array<{ from: string; to: string }>;
   };
 }
 
@@ -114,6 +115,7 @@ function applyClickToSourceWebpackConfig(
     editor: options.clickToSource?.editor,
     allowRemote: options.clickToSource?.allowRemote,
     allowOutsideWorkspace: options.clickToSource?.allowOutsideWorkspace,
+    pathMappings: options.clickToSource?.pathMappings,
   });
 
   const originalSetup = configWithDevServer.devServer?.setupMiddlewares;
