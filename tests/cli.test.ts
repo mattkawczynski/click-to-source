@@ -8,6 +8,7 @@ import {
   patchViteConfig,
   runCli,
   runSetup,
+  patchNextConfig,
 } from "../src/cli.ts";
 
 function countOccurrences(haystack: string, needle: string): number {
@@ -510,4 +511,114 @@ test("runSetup explains manual entry and config setup when files are missing", (
   assert.equal(result.configUpdated, false);
   assert.ok(logs.some((message) => /Manual entry setup:/i.test(message)));
   assert.ok(logs.some((message) => /Manual Vite setup:/i.test(message)));
+});
+
+test("runSetup patches a Next.js App Router project and stays idempotent", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-next-"));
+  fs.mkdirSync(path.join(root, "src", "app"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify(
+      {
+        name: "tmp-next-app",
+        private: true,
+        dependencies: {
+          next: "^15.2.0",
+          react: "^19.0.0",
+          "react-dom": "^19.0.0",
+        },
+        devDependencies: {
+          "click-to-source": "^1.0.10",
+        },
+      },
+      null,
+      2
+    )
+  );
+
+  fs.writeFileSync(
+    path.join(root, "next.config.ts"),
+    [
+      'import type { NextConfig } from "next";',
+      "",
+      "const nextConfig: NextConfig = {",
+      "  reactStrictMode: true,",
+      "};",
+      "",
+      "export default nextConfig;",
+      "",
+    ].join("\n")
+  );
+
+  fs.writeFileSync(
+    path.join(root, "src", "app", "layout.tsx"),
+    [
+      'import type { Metadata } from "next";',
+      "",
+      "export const metadata: Metadata = { title: \"Test\" };",
+      "",
+      "export default function RootLayout({ children }: { children: React.ReactNode }) {",
+      "  return (",
+      '    <html lang="en">',
+      "      <body>",
+      "        {children}",
+      "      </body>",
+      "    </html>",
+      "  );",
+      "}",
+      "",
+    ].join("\n")
+  );
+
+  const logs: string[] = [];
+  const result = runSetup(root, (message) => logs.push(message));
+
+  assert.equal(result.framework, "react");
+  assert.equal(result.bundler, "next");
+  assert.equal(result.configUpdated, true);
+  assert.equal(result.entryUpdated, true);
+
+  const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
+  assert.match(nextConfig, /import withClickToSourceNext from "click-to-source\/next"/);
+  assert.match(nextConfig, /export default withClickToSourceNext\(nextConfig\)/);
+
+  const layout = fs.readFileSync(path.join(root, "src", "app", "layout.tsx"), "utf8");
+  assert.match(layout, /import ClickToSourceClient from "\.\/click-to-source-client"/);
+  assert.match(layout, /<ClickToSourceClient \/>/);
+
+  const clientComponent = fs.readFileSync(
+    path.join(root, "src", "app", "click-to-source-client.tsx"),
+    "utf8"
+  );
+  assert.match(clientComponent, /"use client"/);
+  assert.match(clientComponent, /import "click-to-source\/next-init"/);
+
+  // Idempotency: run setup again
+  const secondLogs: string[] = [];
+  const secondResult = runSetup(root, (message) => secondLogs.push(message));
+  const secondConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
+  const secondLayout = fs.readFileSync(path.join(root, "src", "app", "layout.tsx"), "utf8");
+
+  assert.equal(secondResult.configUpdated, true);
+  assert.equal(secondResult.entryUpdated, false);
+  assert.equal(nextConfig, secondConfig);
+  assert.equal(layout, secondLayout);
+});
+
+test("patchNextConfig wraps an inline export default object", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cts-cli-next-inline-"));
+  const configPath = path.join(root, "next.config.mjs");
+
+  fs.writeFileSync(
+    configPath,
+    "export default {\n  reactStrictMode: true,\n};\n"
+  );
+
+  const updated = patchNextConfig(configPath);
+  const config = fs.readFileSync(configPath, "utf8");
+
+  assert.equal(updated, true);
+  assert.match(config, /import withClickToSourceNext from "click-to-source\/next"/);
+  assert.match(config, /export default withClickToSourceNext\(\{\s*reactStrictMode: true,?\s*\}\)/);
 });

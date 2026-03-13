@@ -3,7 +3,7 @@ import path from "path";
 import { pathToFileURL } from "url";
 
 export type Framework = "react" | "vue" | "svelte" | "angular" | "unknown";
-export type Bundler = "vite" | "webpack" | "rspack" | "angular" | "unknown";
+export type Bundler = "vite" | "webpack" | "rspack" | "angular" | "next" | "unknown";
 type Logger = (message: string) => void;
 
 export interface SetupResult {
@@ -18,6 +18,7 @@ type ManualSetupTarget =
   | { kind: "vite"; framework: Framework; filePath?: string }
   | { kind: "bundler"; bundler: "webpack" | "rspack"; filePath?: string }
   | { kind: "angular" }
+  | { kind: "next" }
   | { kind: "entry"; framework: Framework };
 
 function log(message: string): void {
@@ -99,6 +100,15 @@ function getManualSetupHint(target: ManualSetupTarget): string {
     ]);
   }
 
+  if (target.kind === "next") {
+    return formatManualSetupHint("Manual Next.js setup:", [
+      "Import `withClickToSourceNext` from `click-to-source/next` in your `next.config.*`.",
+      "Wrap the exported config: `export default withClickToSourceNext(nextConfig);`.",
+      'Create a `"use client"` component that imports `click-to-source/next-init` and renders null.',
+      "Import and render that component inside `<body>` in your root `layout.tsx`.",
+    ]);
+  }
+
   return formatManualSetupHint("Manual Angular setup:", [
     'Update `angular.json` so the `serve.builder` value is `click-to-source:dev-server`.',
     'Keep `src/main.ts` importing `click-to-source/init`.',
@@ -123,6 +133,7 @@ export function detectFramework(deps: Record<string, string>): Framework {
 }
 
 export function detectBundler(deps: Record<string, string>): Bundler {
+  if (deps.next) return "next";
   if (deps.vite) return "vite";
   if (deps["@angular/cli"]) return "angular";
   if (deps["@rspack/core"]) return "rspack";
@@ -493,6 +504,177 @@ export function patchAngularConfig(root: string): boolean {
   return true;
 }
 
+export function findNextConfig(root: string): string | null {
+  const candidates = [
+    "next.config.ts",
+    "next.config.mjs",
+    "next.config.js",
+  ];
+  for (const file of candidates) {
+    const full = path.join(root, file);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
+function findStatementEnd(source: string, startIndex: number): number {
+  let depth = 0;
+  let quote: '"' | "'" | "`" | null = null;
+  let escaped = false;
+
+  for (let i = startIndex; i < source.length; i += 1) {
+    const char = source[i];
+
+    if (quote) {
+      if (escaped) { escaped = false; continue; }
+      if (char === "\\") { escaped = true; continue; }
+      if (char === quote) { quote = null; }
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char as '"' | "'" | "`";
+      continue;
+    }
+
+    if (char === "(" || char === "{" || char === "[") { depth += 1; continue; }
+    if (char === ")" || char === "}" || char === "]") { depth -= 1; continue; }
+
+    if (char === ";" && depth === 0) {
+      return i;
+    }
+  }
+
+  return source.length;
+}
+
+export function patchNextConfig(
+  filePath: string,
+  logger: Logger = log
+): boolean {
+  let content = fs.readFileSync(filePath, "utf8");
+
+  if (content.includes("withClickToSourceNext")) {
+    return true;
+  }
+
+  const isCjs =
+    filePath.endsWith(".cjs") ||
+    content.includes("module.exports") ||
+    content.includes("require(");
+
+  if (isCjs) {
+    content = `const withClickToSourceNext = require("click-to-source/next");\n${content}`;
+  } else {
+    content = `import withClickToSourceNext from "click-to-source/next";\n${content}`;
+  }
+
+  const exportMatch = /export\s+default\s+/.exec(content);
+  if (exportMatch) {
+    const exprStart = exportMatch.index + exportMatch[0].length;
+    const exprEnd = findStatementEnd(content, exprStart);
+    const hasSemicolon = exprEnd < content.length;
+    const expr = content.slice(exprStart, exprEnd).trim();
+    const rest = hasSemicolon ? content.slice(exprEnd + 1) : "";
+    content = `${content.slice(0, exportMatch.index)}export default withClickToSourceNext(${expr});${rest}`;
+  } else if (isCjs) {
+    const moduleExports = "module.exports = ";
+    const idx = content.indexOf(moduleExports);
+    if (idx !== -1) {
+      const exprStart = idx + moduleExports.length;
+      const exprEnd = findStatementEnd(content, exprStart);
+      const hasSemicolon = exprEnd < content.length;
+      const expr = content.slice(exprStart, exprEnd).trim();
+      const rest = hasSemicolon ? content.slice(exprEnd + 1) : "";
+      content = `${content.slice(0, idx)}module.exports = withClickToSourceNext(${expr});${rest}`;
+    } else {
+      logger(
+        `Could not find an export in ${path.basename(filePath)}.\n${getManualSetupHint({ kind: "next" })}`
+      );
+      return false;
+    }
+  } else {
+    logger(
+      `Could not find an export default in ${path.basename(filePath)}.\n${getManualSetupHint({ kind: "next" })}`
+    );
+    return false;
+  }
+
+  fs.writeFileSync(filePath, content);
+  return true;
+}
+
+export function findNextAppLayout(root: string): string | null {
+  const candidates = [
+    "src/app/layout.tsx",
+    "src/app/layout.ts",
+    "src/app/layout.jsx",
+    "src/app/layout.js",
+    "app/layout.tsx",
+    "app/layout.ts",
+    "app/layout.jsx",
+    "app/layout.js",
+  ];
+  for (const rel of candidates) {
+    const full = path.join(root, rel);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
+export function patchNextLayout(
+  layoutPath: string,
+  logger: Logger = log
+): boolean {
+  const content = fs.readFileSync(layoutPath, "utf8");
+
+  if (content.includes("click-to-source")) {
+    return false;
+  }
+
+  const layoutDir = path.dirname(layoutPath);
+  const clientComponentPath = path.join(layoutDir, "click-to-source-client.tsx");
+
+  if (!fs.existsSync(clientComponentPath)) {
+    fs.writeFileSync(
+      clientComponentPath,
+      '"use client";\n\nimport "click-to-source/next-init";\n\nexport default function ClickToSourceClient() {\n  return null;\n}\n'
+    );
+  }
+
+  let updated = content;
+
+  const importStatement = 'import ClickToSourceClient from "./click-to-source-client";';
+  const lines = updated.split(/\r?\n/);
+  let lastImportLine = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (/^\s*import\s/.test(lines[i])) {
+      lastImportLine = i;
+    }
+  }
+  if (lastImportLine >= 0) {
+    lines.splice(lastImportLine + 1, 0, importStatement);
+  } else {
+    lines.unshift(importStatement);
+  }
+  updated = lines.join("\n");
+
+  const bodyRegex = /^(\s*)<body[^>]*>/m;
+  const bodyMatch = bodyRegex.exec(updated);
+  if (bodyMatch) {
+    const childIndent = bodyMatch[1] + "  ";
+    updated = updated.replace(/<body[^>]*>/, (match) => `${match}\n${childIndent}<ClickToSourceClient />`);
+  } else {
+    logger(
+      `Could not find a <body> tag in ${path.basename(layoutPath)}.\n${getManualSetupHint({ kind: "next" })}`
+    );
+    return false;
+  }
+
+  fs.writeFileSync(layoutPath, updated);
+  return true;
+}
+
 export function runSetup(root = process.cwd(), logger: Logger = log): SetupResult {
   const pkg = readJson(path.join(root, "package.json"));
   if (!pkg) {
@@ -507,77 +689,110 @@ export function runSetup(root = process.cwd(), logger: Logger = log): SetupResul
   const framework = detectFramework(deps);
   const bundler = detectBundler(deps);
 
-  const entryFile = findEntryFile(root, framework);
+  let entryFile: string | null = null;
   let entryUpdated = false;
-  if (entryFile) {
-    entryUpdated = ensureImport(entryFile, `import "click-to-source/init";`);
-    logger(
-      entryUpdated
-        ? `Added init import to ${path.relative(root, entryFile)}`
-        : `Init import already present in ${path.relative(root, entryFile)}`
-    );
-  } else {
-    logger(
-      `Could not find an entry file automatically.\n${getManualSetupHint({
-        kind: "entry",
-        framework,
-      })}`
-    );
-  }
-
   let configUpdated = false;
-  if (bundler === "vite") {
-    const viteConfig = findViteConfig(root);
-    if (!viteConfig) {
-      logger(
-        `Vite detected but no vite.config.* file was found.\n${getManualSetupHint({
-          kind: "vite",
-          framework,
-        })}`
-      );
-    } else {
-      configUpdated = patchViteConfig(viteConfig, framework, logger);
+
+  if (bundler === "next") {
+    const nextConfig = findNextConfig(root);
+    if (nextConfig) {
+      configUpdated = patchNextConfig(nextConfig, logger);
       if (configUpdated) {
-        logger(`Updated ${path.relative(root, viteConfig)} with click-to-source plugin.`);
+        logger(`Updated ${path.relative(root, nextConfig)} with withClickToSourceNext().`);
       }
-    }
-  } else if (bundler === "angular") {
-    configUpdated = patchAngularConfig(root);
-    if (configUpdated) {
-      logger("Updated angular.json to use click-to-source dev-server builder.");
     } else {
       logger(
-        `Angular detected but angular.json could not be updated safely.\n${getManualSetupHint({
-          kind: "angular",
+        `Next.js detected but no next.config.* file was found.\n${getManualSetupHint({
+          kind: "next",
         })}`
       );
     }
-  } else if (bundler === "webpack" || bundler === "rspack") {
-    const bundlerConfig = findBundlerConfig(root, bundler);
-    if (!bundlerConfig) {
+
+    const layoutFile = findNextAppLayout(root);
+    if (layoutFile) {
+      entryFile = layoutFile;
+      entryUpdated = patchNextLayout(layoutFile, logger);
+      if (entryUpdated) {
+        logger(`Updated ${path.relative(root, layoutFile)} with ClickToSourceClient.`);
+      }
+    } else {
       logger(
-        `${bundler} detected but no ${bundler}.config.* file was found.\n${getManualSetupHint({
-          kind: "bundler",
-          bundler,
+        `Could not find a root layout file.\n${getManualSetupHint({
+          kind: "next",
         })}`
       );
-    } else {
-      configUpdated = patchBundlerConfig(bundlerConfig, bundler, logger);
-      if (configUpdated) {
-        logger(
-          `Updated ${path.relative(root, bundlerConfig)} with withClickToSource().`
-        );
-      }
     }
   } else {
-    logger(
-      "Detected a project shape that click-to-source cannot patch automatically.\n" +
-        getManualSetupHint({
+    entryFile = findEntryFile(root, framework);
+    if (entryFile) {
+      entryUpdated = ensureImport(entryFile, `import "click-to-source/init";`);
+      logger(
+        entryUpdated
+          ? `Added init import to ${path.relative(root, entryFile)}`
+          : `Init import already present in ${path.relative(root, entryFile)}`
+      );
+    } else {
+      logger(
+        `Could not find an entry file automatically.\n${getManualSetupHint({
           kind: "entry",
           framework,
-        }) +
-        "\nRead the README Manual Setup section for the integration that matches your build tool."
-    );
+        })}`
+      );
+    }
+
+    if (bundler === "vite") {
+      const viteConfig = findViteConfig(root);
+      if (!viteConfig) {
+        logger(
+          `Vite detected but no vite.config.* file was found.\n${getManualSetupHint({
+            kind: "vite",
+            framework,
+          })}`
+        );
+      } else {
+        configUpdated = patchViteConfig(viteConfig, framework, logger);
+        if (configUpdated) {
+          logger(`Updated ${path.relative(root, viteConfig)} with click-to-source plugin.`);
+        }
+      }
+    } else if (bundler === "angular") {
+      configUpdated = patchAngularConfig(root);
+      if (configUpdated) {
+        logger("Updated angular.json to use click-to-source dev-server builder.");
+      } else {
+        logger(
+          `Angular detected but angular.json could not be updated safely.\n${getManualSetupHint({
+            kind: "angular",
+          })}`
+        );
+      }
+    } else if (bundler === "webpack" || bundler === "rspack") {
+      const bundlerConfig = findBundlerConfig(root, bundler);
+      if (!bundlerConfig) {
+        logger(
+          `${bundler} detected but no ${bundler}.config.* file was found.\n${getManualSetupHint({
+            kind: "bundler",
+            bundler,
+          })}`
+        );
+      } else {
+        configUpdated = patchBundlerConfig(bundlerConfig, bundler, logger);
+        if (configUpdated) {
+          logger(
+            `Updated ${path.relative(root, bundlerConfig)} with withClickToSource().`
+          );
+        }
+      }
+    } else {
+      logger(
+        "Detected a project shape that click-to-source cannot patch automatically.\n" +
+          getManualSetupHint({
+            kind: "entry",
+            framework,
+          }) +
+          "\nRead the README Manual Setup section for the integration that matches your build tool."
+      );
+    }
   }
 
   logger("Setup complete.");
