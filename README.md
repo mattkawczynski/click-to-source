@@ -3,7 +3,6 @@
 [![npm version](https://img.shields.io/npm/v/click-to-source)](https://www.npmjs.com/package/click-to-source)
 [![npm downloads](https://img.shields.io/npm/dm/click-to-source)](https://www.npmjs.com/package/click-to-source)
 [![CI](https://img.shields.io/github/actions/workflow/status/mattkawczynski/click-to-source/ci.yml?branch=main&label=ci)](https://github.com/mattkawczynski/click-to-source/actions/workflows/ci.yml)
-[![Publish](https://img.shields.io/github/actions/workflow/status/mattkawczynski/click-to-source/publish.yml?label=publish)](https://github.com/mattkawczynski/click-to-source/actions/workflows/publish.yml)
 [![Validated](https://img.shields.io/badge/validated-vite%20%7C%20webpack%20%7C%20rspack%20%7C%20angular%20%7C%20next%20%7C%20nuxt%20%7C%20astro%20%7C%20storybook-0b7285)](#validation-status)
 [![License](https://img.shields.io/npm/l/click-to-source)](LICENSE)
 
