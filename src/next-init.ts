@@ -10,10 +10,10 @@ if (typeof window !== "undefined") {
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
-      initClickToSource();
+      initClickToSource({ force: true });
     });
   } else {
-    initClickToSource();
+    initClickToSource({ force: true });
   }
 }
 

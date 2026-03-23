@@ -18,8 +18,22 @@ let locator: ClickToSourceLocator | null = null;
 let ui: ClickToSourceUI | null = null;
 let pendingInitCleanup: (() => void) | null = null;
 
+function hasReactFiberSource(): boolean {
+  const el = document.querySelector("[class], div, span, a, button, p, h1, h2, h3, main, section, nav, header");
+  if (!el) return false;
+  const fiberKey = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
+  if (!fiberKey) return false;
+  let fiber = (el as Record<string, any>)[fiberKey];
+  while (fiber) {
+    // React 18: _debugSource, React 19+: _debugStack
+    if (fiber._debugSource || fiber._debugStack) return true;
+    fiber = fiber.return;
+  }
+  return false;
+}
+
 function hasSourceAttributes(): boolean {
-  return !!document.querySelector(`[${DATA_ATTR}]`);
+  return !!document.querySelector(`[${DATA_ATTR}]`) || hasReactFiberSource();
 }
 
 function clearPendingInit(): void {
@@ -62,10 +76,12 @@ function scheduleDeferredInit(): void {
  * Initialize click-to-source
  * This is called automatically when using the Vite plugin
  */
-export function initClickToSource(): void {
+export function initClickToSource(options?: { force?: boolean }): void {
   if (typeof window === "undefined") {
     return;
   }
+
+  const force = options?.force === true;
 
   const isDev =
     typeof __CLICK_TO_SOURCE_DEV__ !== "undefined"
@@ -75,7 +91,7 @@ export function initClickToSource(): void {
       : false;
 
   // Only initialize in development, unless we can detect injected attributes
-  if (!isDev && !hasSourceAttributes()) {
+  if (!force && !isDev && !hasSourceAttributes()) {
     scheduleDeferredInit();
     return;
   }

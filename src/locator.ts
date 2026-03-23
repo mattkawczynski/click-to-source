@@ -12,6 +12,7 @@ import {
   openInEditor,
   type SourceLocation,
 } from "./open";
+import { resolveFromSourceMap } from "./sourcemap-resolve";
 
 const FIRST_RUN_HINT_KEY = "__click_to_source_hint_seen_v3";
 const TOOLTIP_OFFSET = 16;
@@ -63,14 +64,11 @@ export class ClickToSourceLocator {
     // Check if the correct hotkey is pressed
     if (!this.isHotkey(e, config.hotkey)) return;
 
-    // Find element with data-click-to-source attribute
+    // Find element with data-click-to-source attribute or React fiber source
     const element = this.findSourceElement(e.target);
     if (!element) return;
 
-    const raw = element.getAttribute(DATA_ATTR);
-    if (!raw) return;
-
-    // Prevent default behavior
+    // Prevent default behavior (do this before async work)
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
@@ -78,7 +76,7 @@ export class ClickToSourceLocator {
     // Highlight element briefly
     this.highlightElement(element);
 
-    const location = this.parseSource(raw);
+    const location = await this.resolveSourceLocation(element);
     if (!location) return;
 
     const action = config.action;
@@ -178,7 +176,19 @@ export class ClickToSourceLocator {
   }
 
   /**
-   * Open file in VSCode
+   * Get source location from either the data attribute or React fiber debug info.
+   * For fiber-based sources, resolves through source maps to get the original file path.
+   */
+  private async resolveSourceLocation(element: Element): Promise<SourceLocation | null> {
+    const raw = element.getAttribute(DATA_ATTR);
+    if (raw) {
+      return this.parseSource(raw);
+    }
+    return this.getFiberSource(element);
+  }
+
+  /**
+   * Parse a "file:line:column" source string.
    */
   private parseSource(raw: string): SourceLocation | null {
     const lastColon = raw.lastIndexOf(":");
@@ -236,10 +246,11 @@ export class ClickToSourceLocator {
     const config = configManager.getConfig();
     let current: Element | null = target;
 
+    // Try build-time data attributes first
     while (current) {
       const candidate: Element | null = current.closest(`[${DATA_ATTR}]`);
       if (!candidate) {
-        return null;
+        break;
       }
 
       if (this.isIgnoredElement(candidate, config)) {
@@ -250,6 +261,113 @@ export class ClickToSourceLocator {
       return candidate;
     }
 
+    // Fallback: walk up from target looking for React fiber _debugSource
+    current = target;
+    while (current) {
+      if (
+        current.id === "__click-to-source-container" ||
+        current.id === TOOLTIP_ID ||
+        current.id === TOAST_ID
+      ) {
+        break;
+      }
+
+      if (!this.isIgnoredElement(current, config) && this.hasFiberDebugInfo(current)) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
+  /**
+   * Synchronous check: does this element have any React fiber debug info?
+   * Used for hover detection (no source map resolution needed).
+   */
+  private hasFiberDebugInfo(element: Element): boolean {
+    const fiberKey = Object.keys(element).find((k) => k.startsWith("__reactFiber$"));
+    if (!fiberKey) return false;
+    let fiber = (element as Record<string, any>)[fiberKey];
+    while (fiber) {
+      if (fiber._debugSource || fiber._debugStack) return true;
+      fiber = fiber.return;
+    }
+    return false;
+  }
+
+  /**
+   * Get source location from React fiber debug info (available in dev mode).
+   * Supports both React 18 (_debugSource) and React 19+ (_debugStack).
+   * For React 19, resolves bundled URLs through source maps to original file paths.
+   */
+  private async getFiberSource(element: Element): Promise<SourceLocation | null> {
+    const fiberKey = Object.keys(element).find((k) => k.startsWith("__reactFiber$"));
+    if (!fiberKey) return null;
+
+    let fiber = (element as Record<string, any>)[fiberKey];
+    while (fiber) {
+      // React 18: structured _debugSource
+      const source = fiber._debugSource;
+      if (source?.fileName) {
+        return {
+          file: source.fileName.replace(/\\/g, "/"),
+          line: source.lineNumber || 1,
+          column: (source.columnNumber ?? 0) + 1,
+        };
+      }
+
+      // React 19+: _debugStack is an Error with a stack trace
+      const debugStack = fiber._debugStack;
+      if (debugStack?.stack) {
+        const loc = await this.resolveDebugStack(debugStack.stack);
+        if (loc) return loc;
+      }
+
+      fiber = fiber.return;
+    }
+    return null;
+  }
+
+  /**
+   * Parse a React 19 _debugStack Error.stack and resolve through source maps
+   * to get the original file path, line, and column.
+   */
+  private async resolveDebugStack(stack: string): Promise<SourceLocation | null> {
+    const lines = stack.split("\n");
+    for (const line of lines) {
+      if (line.includes("node_modules") || line.includes("react-stack-top-frame")) {
+        continue;
+      }
+
+      // Match "at Component (url:line:col)" or "at url:line:col"
+      const match =
+        line.match(/\((.+):(\d+):(\d+)\)/) ||
+        line.match(/at\s+(.+):(\d+):(\d+)/);
+      if (match) {
+        const rawFile = match[1];
+        if (rawFile.includes("node_modules")) continue;
+
+        const genLine = Number(match[2]) || 1;
+        const genCol = Number(match[3]) || 1;
+
+        // If it's a URL (bundled chunk), resolve through source map
+        if (rawFile.startsWith("http://") || rawFile.startsWith("https://")) {
+          const resolved = await resolveFromSourceMap(rawFile, genLine, genCol);
+          if (resolved) {
+            return resolved;
+          }
+          continue;
+        }
+
+        // Already a file path
+        return {
+          file: rawFile.replace(/\\/g, "/"),
+          line: genLine,
+          column: genCol,
+        };
+      }
+    }
     return null;
   }
 
@@ -369,24 +487,39 @@ export class ClickToSourceLocator {
     document.head.appendChild(style);
   }
 
-  private updateTooltipContent(): void {
+  private async updateTooltipContent(): Promise<void> {
     const element = this.previewElement;
     if (!element) {
       this.hideTooltip();
       return;
     }
 
+    // Show immediate feedback for data-attr path, async resolve for fiber
     const raw = element.getAttribute(DATA_ATTR);
-    const location = raw ? this.parseSource(raw) : null;
-    if (!location) {
+    if (raw) {
+      const location = this.parseSource(raw);
+      if (!location) { this.hideTooltip(); return; }
+      const config = configManager.getConfig();
+      const tooltip = this.getOrCreateOverlay(TOOLTIP_ID);
+      tooltip.textContent = `${this.getActionLabel(location, config)} ${formatSourceLocation(location, config)}`;
+      this.updateTooltipPosition();
+      return;
+    }
+
+    // Fiber path: show loading, then resolve
+    const tooltip = this.getOrCreateOverlay(TOOLTIP_ID);
+    tooltip.textContent = "Resolving source…";
+    this.updateTooltipPosition();
+
+    const location = await this.resolveSourceLocation(element);
+    if (!location || this.previewElement !== element) {
+      if (this.previewElement !== element) return;
       this.hideTooltip();
       return;
     }
 
     const config = configManager.getConfig();
-    const tooltip = this.getOrCreateOverlay(TOOLTIP_ID);
     tooltip.textContent = `${this.getActionLabel(location, config)} ${formatSourceLocation(location, config)}`;
-    this.updateTooltipPosition();
   }
 
   private updateTooltipPosition(): void {
